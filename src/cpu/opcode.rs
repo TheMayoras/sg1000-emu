@@ -257,6 +257,38 @@ pub enum Opcode {
     OrAHLptr = 0xB6,
     // Or A, Lit
     OrALit = 0xF6,
+
+    // Xor A, reg
+    XorAB = 0xA8,
+    XorAC,
+    XorAD,
+    XorAE,
+    XorAH,
+    XorAL,
+    XorAA = 0xAF,
+    // Xor A, (HL)
+    XorAHLptr = 0xAE,
+    // Xor A, Lit
+    XorALit = 0xEE,
+
+    // Xor A, reg
+    CpAB = 0xB8,
+    CpAC,
+    CpAD,
+    CpAE,
+    CpAH,
+    CpAL,
+    CpAA = 0xBF,
+    // Cp A, (HL)
+    CpAHLptr = 0xBE,
+    // Cp A, Lit
+    CpALit = 0xFE,
+
+    Rlca = 0x07,
+    Rla = 0x17,
+
+    Rrca = 0x0F,
+    Rra = 01F,
 }
 
 impl Opcode {
@@ -583,6 +615,43 @@ impl Opcode {
                 let val = cpu.imm_addr();
                 cpu.or_a_lit(val);
             }
+
+            Opcode::XorAB => cpu.xor_a_reg(RegisterCode::B),
+            Opcode::XorAC => cpu.xor_a_reg(RegisterCode::C),
+            Opcode::XorAD => cpu.xor_a_reg(RegisterCode::D),
+            Opcode::XorAE => cpu.xor_a_reg(RegisterCode::E),
+            Opcode::XorAH => cpu.xor_a_reg(RegisterCode::H),
+            Opcode::XorAL => cpu.xor_a_reg(RegisterCode::L),
+            Opcode::XorAA => cpu.xor_a_reg(RegisterCode::A),
+            Opcode::XorAHLptr => {
+                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                cpu.xor_a_addr(addr);
+            }
+            Opcode::XorALit => {
+                let val = cpu.imm_addr();
+                cpu.xor_a_lit(val);
+            }
+
+            Opcode::CpAB => cpu.cp_a_reg(RegisterCode::B),
+            Opcode::CpAC => cpu.cp_a_reg(RegisterCode::C),
+            Opcode::CpAD => cpu.cp_a_reg(RegisterCode::D),
+            Opcode::CpAE => cpu.cp_a_reg(RegisterCode::E),
+            Opcode::CpAH => cpu.cp_a_reg(RegisterCode::H),
+            Opcode::CpAL => cpu.cp_a_reg(RegisterCode::L),
+            Opcode::CpAA => cpu.cp_a_reg(RegisterCode::A),
+            Opcode::CpAHLptr => {
+                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                cpu.cp_a_addr(addr);
+            }
+            Opcode::CpALit => {
+                let val = cpu.imm_addr();
+                cpu.cp_a_lit(val);
+            }
+            Opcode::Rlca=> cpu.rlca(),
+            Opcode::Rla => cpu.rla(),
+            Opcode::Rrca=> cpu.rrca(),
+            Opcode::Rra => cpu.rra(),
+            
             // Extended Opcodes
             Opcode::Ix => panic!("Unimplemented!"),
             Opcode::Iy => panic!("Unimplemented!"),
@@ -590,5 +659,238 @@ impl Opcode {
             Opcode::Extd => panic!("Unimplemented!"),
             _ => panic!("Unimplemented!"),
         }
+    }
+
+    fn decode(opcode: Opcode) -> String {
+        match opcode {
+            // ld Reg, Reg
+            Opcode::LdBB => String::from("Ld B, B"),
+            Opcode::LdBC => String::from("Ld B, C"),
+            Opcode::LdBD => String::from("Ld B, D"),
+            Opcode::LdBE => String::from("Ld B, E"),
+            Opcode::LdBH => String::from("Ld B, H"),
+            Opcode::LdBL => String::from("Ld B, L"),
+            Opcode::LdBA => String::from("Ld B, A"),
+            Opcode::LdDB => String::from("Ld D, B"),
+            Opcode::LdDC => String::from("Ld D, C"),
+            Opcode::LdDD => String::from("Ld D, D"),
+            Opcode::LdDE => String::from("Ld D, E"),
+            Opcode::LdDH => String::from("Ld D, H"),
+            Opcode::LdDL => String::from("Ld D, L"),
+            Opcode::LdDA => String::from("Ld D, A"),
+            Opcode::LdHB => String::from("Ld H, B"),
+            Opcode::LdHC => String::from("Ld H, C"),
+            Opcode::LdHD => String::from("Ld H, D"),
+            Opcode::LdHE => String::from("Ld H, E"),
+            Opcode::LdHH => String::from("Ld H, H"),
+            Opcode::LdHL => String::from("Ld H, L"),
+            Opcode::LdHA => String::from("Ld H, A"),
+            Opcode::LdCB => String::from("Ld C, B"),
+            Opcode::LdCC => String::from("Ld C, C"),
+            Opcode::LdCD => String::from("Ld C, D"),
+            Opcode::LdCE => String::from("Ld C, E"),
+            Opcode::LdCH => String::from("Ld C, H"),
+            Opcode::LdCL => String::from("Ld C, L"),
+            Opcode::LdCA => String::from("Ld C, A"),
+            Opcode::LdEB => String::from("Ld E, B"),
+            Opcode::LdEC => String::from("Ld E, C"),
+            Opcode::LdED => String::from("Ld E, D"),
+            Opcode::LdEE => String::from("Ld E, E"),
+            Opcode::LdEH => String::from("Ld E, H"),
+            Opcode::LdEL => String::from("Ld E, L"),
+            Opcode::LdEA => String::from("Ld E, A"),
+            Opcode::LdLB => String::from("Ld L, B"),
+            Opcode::LdLC => String::from("Ld L, C"),
+            Opcode::LdLD => String::from("Ld L, D"),
+            Opcode::LdLE => String::from("Ld L, E"),
+            Opcode::LdLH => String::from("Ld L, H"),
+            Opcode::LdLL => String::from("Ld L, L"),
+            Opcode::LdLA => String::from("Ld L, A"),
+            Opcode::LdAB => String::from("Ld A, B"),
+            Opcode::LdAC => String::from("Ld A, C"),
+            Opcode::LdAD => String::from("Ld A, D"),
+            Opcode::LdAE => String::from("Ld A, E"),
+            Opcode::LdAH => String::from("Ld A, H"),
+            Opcode::LdAL => String::from("Ld A, L"),
+            Opcode::LdAA => String::from("Ld A, A"),
+
+            // Load Reg, Literal
+            Opcode::LdBLit => String::from("Ld, B, *"),
+            Opcode::LdDLit => String::from("Ld, D, *"),
+            Opcode::LdHLit => String::from("Ld, H, *"),
+            Opcode::LdCLit => String::from("Ld, C, *"),
+            Opcode::LdELit => String::from("Ld, E, *"),
+            Opcode::LdLLit => String::from("Ld, L, *"),
+            Opcode::LdALit => String::from("Ld, A, *"),
+
+            // Load Reg, (16 Bit Pair)
+            Opcode::LdBHLptr => String::from("Ld B, (HL)"),
+            Opcode::LdDHLptr => String::from("Ld D, (HL)"),
+            Opcode::LdHHLptr => String::from("Ld H, (HL)"),
+            Opcode::LdCHLptr => String::from("Ld C, (HL)"),
+            Opcode::LdEHLptr => String::from("Ld E, (HL)"),
+            Opcode::LdLHLptr => String::from("Ld L, (HL)"),
+            Opcode::LdAHLptr => String::from("Ld A, (HL)"),
+            Opcode::LdABCptr => String::from("Ld A, (BC)"),
+            Opcode::LdADEptr => String::from("Ld A, (DE)"),
+
+            // Load (HL), Reg
+            Opcode::LdHLptrB => String::from("Ld (HL), B"),
+            Opcode::LdHLptrC => String::from("Ld AHL), C"),
+            Opcode::LdHLptrD => String::from("Ld (HL), D"),
+            Opcode::LdHLptrE => String::from("Ld (HL), E"),
+            Opcode::LdHLptrH => String::from("Ld (HL), H"),
+            Opcode::LdHLptrL => String::from("Ld (HL), L"),
+            Opcode::LdHLptrA => String::from("Ld (HL), A"),
+
+            // Ld (HL), literal
+            Opcode::LdHlptrLit => String::from("Ld (HL), *"),
+
+            // ld (literal), Reg
+            Opcode::LdLitptrH => String::from("Ld (**), H"),
+            Opcode::LdLitptrA => String::from("Ld (**), A"),
+            // ld (16 bit pair), reg
+            Opcode::LdBCptrA => String::from("Ld (BC), A"),
+            Opcode::LdDEptrA => String::from("Ld (DE), A"),
+
+            Opcode::LdBCLit => String::from("Ld, BC, **"),
+            Opcode::LdDELit => String::from("Ld, DE, **"),
+            Opcode::LdHLLit => String::from("Ld, HL, **"),
+            Opcode::LdSpLit => String::from("Ld, Sp, **"),
+
+            Opcode::LdSpHL => String::from("Ld, SP, HL"),
+
+            /* ------------- inc Reg ------------- */
+            Opcode::IncB => String::from("Inc B"),
+            Opcode::IncD => String::from("Inc D"),
+            Opcode::IncH => String::from("Inc H"),
+            Opcode::IncC => String::from("Inc C"),
+            Opcode::IncE => String::from("Inc E"),
+            Opcode::IncL => String::from("Inc L"),
+            Opcode::IncA => String::from("Inc A"),
+
+            Opcode::IncHLptr => String::from("Inc (HL)"),
+
+            Opcode::IncBC => String::from("Inc BC"),
+            Opcode::IncDE => String::from("Inc DE"),
+            Opcode::IncHL => String::from("Inc HL"),
+            Opcode::IncSP => String::from("Inc SP"),
+
+            Opcode::DecB => String::from("Dec B"),
+            Opcode::DecD => String::from("Dec D"),
+            Opcode::DecH => String::from("Dec H"),
+            Opcode::DecC => String::from("Dec C"),
+            Opcode::DecE => String::from("Dec E"),
+            Opcode::DecL => String::from("Dec L"),
+            Opcode::DecA => String::from("Dec A"),
+
+            Opcode::DecHLptr => String::from("Dec (HL)"),
+
+            Opcode::DecBC => String::from("Dec BC"),
+            Opcode::DecDE => String::from("Dec DE"),
+            Opcode::DecHL => String::from("Dec HL"),
+            Opcode::DecSP => String::from("Dec SP"),
+
+            Opcode::AddAB => String::from("Add A, B"),
+            Opcode::AddAC => String::from("Add A, C"),
+            Opcode::AddAD => String::from("Add A, D"),
+            Opcode::AddAE => String::from("Add A, E"),
+            Opcode::AddAH => String::from("Add A, H"),
+            Opcode::AddAL => String::from("Add A, L"),
+            Opcode::AddAA => String::from("Add A, A"),
+            Opcode::AddAHLptr => String::from("Add A, (HL)"),
+
+            Opcode::AddALit => String::from("Add A, *"),
+
+            // ADD Acc, Reg
+            Opcode::AdcAB => String::from("AdC, A, B"),
+            Opcode::AdcAC => String::from("AdC, A, C"),
+            Opcode::AdcAD => String::from("AdC, A, D"),
+            Opcode::AdcAE => String::from("AdC, A, E"),
+            Opcode::AdcAH => String::from("AdC, A, H"),
+            Opcode::AdcAL => String::from("AdC, A, L"),
+            Opcode::AdcAA => String::from("AdC, A, A"),
+            Opcode::AdcAHLptr => String::from("AdC A, (HL)"),
+            Opcode::AdcALit => String::from("AdC A, *"),
+            Opcode::SubAB => String::from("Sub A, B"),
+            Opcode::SubAC => String::from("Sub A, C"),
+            Opcode::SubAD => String::from("Sub A, D"),
+            Opcode::SubAE => String::from("Sub A, E"),
+            Opcode::SubAH => String::from("Sub A, H"),
+            Opcode::SubAL => String::from("Sub A, L"),
+            Opcode::SubAA => String::from("Sub A, A"),
+            Opcode::SubAHLptr => String::from("Sub A, (HL)"),
+            Opcode::SubALit => String::from("A, *"),
+
+            Opcode::SubcAB => String::from("SbC A, B"),
+            Opcode::SubcAC => String::from("SbC A, C"),
+            Opcode::SubcAD => String::from("SbC A, D"),
+            Opcode::SubcAE => String::from("SbC A, E"),
+            Opcode::SubcAH => String::from("SbC A, H"),
+            Opcode::SubcAL => String::from("SbC A, L"),
+            Opcode::SubcAA => String::from("SbC A, A"),
+            Opcode::SubcAHLptr => String::from("SbC A, (HL)"),
+            Opcode::SubcALit => String::from("SbC A, *"),
+            Opcode::AndAB => String::from("And A, B"),
+            Opcode::AndAC => String::from("And A, C"),
+            Opcode::AndAD => String::from("And A, D"),
+            Opcode::AndAE => String::from("And A, E"),
+            Opcode::AndAH => String::from("And A, H"),
+            Opcode::AndAL => String::from("And A, L"),
+            Opcode::AndAA => String::from("And A, A"),
+            Opcode::AndAHLptr => String::from("And A, (HL)"),
+            Opcode::AndALit => String::from("And A, *"),
+
+            Opcode::OrAB => String::from("Or A, B"),
+            Opcode::OrAC => String::from("Or A, C"),
+            Opcode::OrAD => String::from("Or A, D"),
+            Opcode::OrAE => String::from("Or A, E"),
+            Opcode::OrAH => String::from("Or A, H"),
+            Opcode::OrAL => String::from("Or A, L"),
+            Opcode::OrAA => String::from("Or A, A"),
+            Opcode::OrAHLptr => String::from("Or A, (HL)"),
+            Opcode::OrALit => String::from("Or A, *"),
+
+            Opcode::XorAB => String::from("Xor A, B"),
+            Opcode::XorAC => String::from("Xor A, C"),
+            Opcode::XorAD => String::from("Xor A, D"),
+            Opcode::XorAE => String::from("Xor A, E"),
+            Opcode::XorAH => String::from("Xor A, H"),
+            Opcode::XorAL => String::from("Xor A, L"),
+            Opcode::XorAA => String::from("Xor A, A"),
+            Opcode::XorAHLptr => String::from("Xor A, (HL)"),
+            Opcode::XorALit => String::from("Xor A, *"),
+
+            Opcode::CpAB => String::from("Cp A, B"),
+            Opcode::CpAC => String::from("Cp A, C"),
+            Opcode::CpAD => String::from("Cp A, D"),
+            Opcode::CpAE => String::from("Cp A, E"),
+            Opcode::CpAH => String::from("Cp A, H"),
+            Opcode::CpAL => String::from("Cp A, L"),
+            Opcode::CpAA => String::from("Cp A, A"),
+            Opcode::CpAHLptr => String::from("Cp A, (HL)"),
+            Opcode::CpALit => String::from("Cp A, *"),
+
+            Opcode::Rlca => String::from("Rlca"),            
+            Opcode::Rla => String::from("Rla"),
+            Opcode::Rrca => String::from("Rrca"),
+            Opcode::Rra => String::from("Rra"),
+           
+            // Extended Opcodes
+            Opcode::Ix => panic!("Unimplemented!"),
+            Opcode::Iy => panic!("Unimplemented!"),
+            Opcode::Bits => panic!("Unimplemented!"),
+            Opcode::Extd => panic!("Unimplemented!"),
+            _ => panic!("Unimplemented!"),
+        }
+    }
+}
+
+#[cfg(test)] mod test {
+    use super::*;
+    #[test]
+    fn test_decode() {
+        let op = Opcode::from_u8(0x47);
+        assert_eq!("Ld B, A", Opcode::decode(op));
     }
 }

@@ -755,23 +755,135 @@ impl Cpu {
         let val = self.reg_value(reg);
         let acc = self.reg_value(RegisterCode::A);
 
-        self.and_val_val(acc, val);
+        self.or_val_val(acc, val);
     }
 
     fn or_a_addr(&mut self, addr: u16) {
         let val = self.fetch(addr);
         let acc = self.reg_value(RegisterCode::A);
 
-        self.and_val_val(acc, val);
+        self.or_val_val(acc, val);
     }
 
     fn or_a_lit(&mut self, val: u8) {
         let acc = self.reg_value(RegisterCode::A);
 
-        self.and_val_val(acc, val);
+        self.or_val_val(acc, val);
     }
 
-    
+    fn xor_val_val(&mut self, acc: u8, operand: u8) -> u8 {
+        let result = acc ^ operand;
+        self.set_flag(Flags::Sign, result >= 0x80);
+        self.set_flag(Flags::Zero, result == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::AddSubtract, false);
+        self.set_flag(Flags::Carry, false);
+
+        let mut parity = 0;
+        let mut val = result;
+        while val > 0 {
+            parity ^= val & 1;
+            val >>= 1;
+        }
+        self.set_flag(Flags::OverflowParity, parity > 0);
+
+        result
+    }
+
+    fn xor_a_reg(&mut self, reg: RegisterCode) {
+        let val = self.reg_value(reg);
+        let acc = self.reg_value(RegisterCode::A);
+
+        self.xor_val_val(acc, val);
+    }
+
+    fn xor_a_addr(&mut self, addr: u16) {
+        let val = self.fetch(addr);
+        let acc = self.reg_value(RegisterCode::A);
+
+        self.xor_val_val(acc, val);
+    }
+
+    fn xor_a_lit(&mut self, val: u8) {
+        let acc = self.reg_value(RegisterCode::A);
+
+        self.xor_val_val(acc, val);
+    }
+
+    fn cp_a_val(&mut self, val: u8) -> bool {
+        let a = self.reg_value(RegisterCode::A);
+        let result = a == val;
+
+        self.set_flag(Flags::Zero, result);
+        self.set_flag(Flags::OverflowParity, val > a);
+
+        self.set_flag(Flags::AddSubtract, true);
+        self.set_flag(Flags::HalfCarry, (val & 0x0F) > (a & 0x0F));
+
+        result
+    }
+
+    fn cp_a_reg(&mut self, reg: RegisterCode) {
+        let val = self.reg_value(reg);
+
+        self.cp_a_val(val);
+    }
+
+    fn cp_a_addr(&mut self, addr: u16) {
+        let val = self.fetch(addr);
+
+        self.cp_a_val(val);
+    }
+
+    fn cp_a_lit(&mut self, val: u8) {
+        self.cp_a_val(val);
+    }
+
+    fn rlca(&mut self) {
+        let a = self.reg_value(RegisterCode::A);
+        let carry = a >> 7;
+
+        self.set_flag(Flags::Carry, carry > 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::AddSubtract, false);
+
+        self.set_reg_value(RegisterCode::A, ((a << 1) | carry) as u16);
+    }
+
+    fn rla(&mut self) {
+        let a = self.reg_value(RegisterCode::A);
+        let carry_out = a >> 7;
+        let carry_in = if self.flag(Flags::Carry) { 1 } else { 0 };
+
+        self.set_flag(Flags::Carry, carry_out > 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::AddSubtract, false);
+
+        self.set_reg_value(RegisterCode::A, ((a << 1) | carry_in) as u16);
+    }
+
+    fn rrca(&mut self) {
+        let a = self.reg_value(RegisterCode::A);
+        let carry = a & 1;
+
+        self.set_flag(Flags::Carry, carry > 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::AddSubtract, false);
+
+        self.set_reg_value(RegisterCode::A, ((a >> 1) | (carry << 7)) as u16);
+    }
+
+    fn rra(&mut self) {
+        let a = self.reg_value(RegisterCode::A);
+        let carry_out = a & 1;
+        let carry_in = if self.flag(Flags::Carry) { 1 } else { 0 };
+
+        self.set_flag(Flags::Carry, carry_in > 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::AddSubtract, false);
+
+        self.set_reg_value(RegisterCode::A, ((a >> 1) | (carry_out << 7)) as u16);
+    }
 }
 
 /* --------------------------------- TESTING --------------------------------- */
