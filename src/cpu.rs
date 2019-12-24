@@ -22,29 +22,21 @@ pub enum TriStateLogic {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(usize)]
 pub enum RegisterCode {
-    Flags,
+    Flags = 0,
     A,
     B,
     C,
     D,
     E,
-    F,
     H,
     L,
-
-    I,
-    R,
-    IX,
-    IY,
-    SP,
-    PC,
 }
 
 // register codes for 16 bit registers and 16 bit register pairs
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(usize)]
 pub enum RegisterCode16 {
-    I,
+    I = 0,
     R,
     IX,
     IY,
@@ -74,7 +66,9 @@ pub struct Cpu {
     read_write:           TriStateLogic,
     interrupt_enable:     bool,
     iff2:                 bool,
-    registers:            [u16; 16], // register values
+    reg:                  [u16; 8], // register values
+    alt_reg:              [u16; 8],
+    spec_reg:             [u32; 6],
     buffer:               Vec<u8>,
     stack:                Vec<u8>,
 }
@@ -90,7 +84,9 @@ impl Cpu {
             read_write:           TriStateLogic::Disconnect,
             interrupt_enable:     false,
             iff2:                 false,
-            registers:            [0; 16],
+            reg:                  [0; 8],
+            alt_reg:              [0; 8],
+            spec_reg:             [0; 6],
             buffer:               buf,
             stack:                Vec::new(),
         }
@@ -108,11 +104,11 @@ impl Cpu {
     }
 
     pub fn get_pc(&self) -> u16 {
-        self.reg_value(RegisterCode::PC) as u16
+        self.reg_value_16(RegisterCode16::PC)
     }
 
     pub fn reg_value(&self, code: RegisterCode) -> u8 {
-        self.registers[code as usize] as u8
+        self.reg[code as usize] as u8
     }
 
     fn set_reg_value_16(&mut self, code: RegisterCode16, val: u16) {
@@ -131,38 +127,18 @@ impl Cpu {
                 reg_high = RegisterCode::H;
                 reg_low = RegisterCode::L;
             }
-            RegisterCode16::I => {
-                self.registers[RegisterCode::I as usize] = val;
-                return;
-            }
-            RegisterCode16::R => {
-                self.registers[RegisterCode::R as usize] = val;
-                return;
-            }
-            RegisterCode16::IX => {
-                self.registers[RegisterCode::IX as usize] = val;
-                return;
-            }
-            RegisterCode16::IY => {
-                self.registers[RegisterCode::IY as usize] = val;
-                return;
-            }
-            RegisterCode16::SP => {
-                self.registers[RegisterCode::SP as usize] = val;
-                return;
-            }
 
-            RegisterCode16::PC => {
-                self.registers[RegisterCode::PC as usize] = val;
+            _ => {
+                self.spec_reg[code as usize] = val as u32;
                 return;
             }
         }
 
-        self.registers[reg_high as usize] = (val >> 8) & 0xFF;
-        self.registers[reg_low as usize] = val & 0xFF;
+        self.reg[reg_high as usize] = (val >> 8) & 0xFF;
+        self.reg[reg_low as usize] = val & 0xFF;
     }
 
-    fn reg_value_16(&mut self, code: RegisterCode16) -> u16 {
+    fn reg_value_16(&self, code: RegisterCode16) -> u16 {
         let reg_high: RegisterCode;
         let reg_low: RegisterCode;
         match code {
@@ -178,36 +154,31 @@ impl Cpu {
                 reg_high = RegisterCode::H;
                 reg_low = RegisterCode::L;
             }
-            RegisterCode16::I => return self.registers[RegisterCode::I as usize],
-            RegisterCode16::IX => return self.registers[RegisterCode::IX as usize],
-            RegisterCode16::IY => return self.registers[RegisterCode::IY as usize],
-            RegisterCode16::SP => return self.registers[RegisterCode::SP as usize],
-            RegisterCode16::R => return self.registers[RegisterCode::R as usize],
-            RegisterCode16::PC => return self.registers[RegisterCode::PC as usize],
+            _ => return self.spec_reg[code as usize] as u16,
         }
 
-        let high_byte = self.registers[reg_high as usize];
-        let low_byte = self.registers[reg_low as usize];
+        let high_byte = self.reg[reg_high as usize];
+        let low_byte = self.reg[reg_low as usize];
 
         (high_byte << 8) | (low_byte & 0xFF)
     }
 
     fn set_flag(&mut self, f: Flags, set: bool) {
-        let mut flag = self.registers[RegisterCode::Flags as usize];
+        let mut flag = self.reg[RegisterCode::Flags as usize];
         if set {
             flag |= 1 << f as u8;
         } else {
             flag &= !(1 << f as u8);
         }
 
-        self.registers[RegisterCode::Flags as usize] = flag;
+        self.reg[RegisterCode::Flags as usize] = flag;
     }
 
     /// Get the value of a flag
     fn flag(&self, f: Flags) -> bool {
         // get the registers value.  shift that right so that the least significant bit is the flag.
         //  & with 1 to remove all other values.  return true if result is 1
-        ((self.registers[RegisterCode::Flags as usize]) >> f as u8) & 1 == 1
+        ((self.reg[RegisterCode::Flags as usize]) >> f as u8) & 1 == 1
     }
 
     pub fn inc_clock_n(&mut self, n: u64) {
@@ -219,7 +190,7 @@ impl Cpu {
     }
 
     fn set_reg_value(&mut self, code: RegisterCode, value: u16) {
-        self.registers[code as usize] = value;
+        self.reg[code as usize] = value;
     }
 
     // to test if we can set the read_write
@@ -228,10 +199,10 @@ impl Cpu {
         self.read_write = rw;
     }
 
-    fn push(&mut self, value: u8) {
-        self.stack.push(value);
-        self.registers[RegisterCode::SP as usize] += 8; // inc by a byte
-    }
+    // fn push(&mut self, value: u8) {
+    //     self.stack.push(value);
+    //     self.reg[RegisterCode::SP as usize] += 8; // inc by a byte
+    // }
 
     fn fetch(&self, addr: u16) -> u8 {
         self.buffer[addr as usize]
@@ -272,7 +243,7 @@ impl Cpu {
 
     /// Increment the program counter by the number of _bits_ supplied
     fn inc_pc_n(&mut self, bits: u16) {
-        self.registers[RegisterCode::PC as usize] += bits;
+        self.spec_reg[RegisterCode16::PC as usize] += bits as u32;
     }
 
     /* --------------------------------- ADDRESSING MODES --------------------------------- */
@@ -341,12 +312,12 @@ impl Cpu {
     /// in memory to one of the index registers.
     /// The index registers are IX and IY.
     /// This function will panic if an invalid register is supplied.
-    fn index_addr(&mut self, register: RegisterCode) -> u16 {
-        if register != RegisterCode::IX && register != RegisterCode::IY {
+    fn index_addr(&mut self, register: RegisterCode16) -> u16 {
+        if register != RegisterCode16::IX && register != RegisterCode16::IY {
             panic!("Attempting to use register '{:?}' to perform Indexed Addressing.  Only Registers 'IX' and 'IY' are able to be used for this addressing mode!", register);
         }
 
-        let reg_val = self.registers[register as usize] as i16 as i32;
+        let reg_val = self.reg_value_16(register) as i16 as i32;
 
         let displacement = self.next_byte() as i8 as i32;
 
@@ -369,19 +340,7 @@ impl Cpu {
     /// This function will handle changing all internal Cpu values and will write to
     /// any necessary busses
     pub fn do_operation(&mut self) {
-        // get the current Program Counter
-        let opcode = *self.buffer.get(self.get_pc() as usize).unwrap();
-
-        let op = Opcode::from_u8(opcode);
-        Opcode::operate(self, op);
-
-        // increment by a byte
-        self.registers[RegisterCode::PC as usize] += 8;
-
-        match opcode {
-            0x0 => println!("NOP"),
-            _ => panic!("Unimplemented"),
-        }
+        unimplemented!();
     }
 }
 
@@ -393,7 +352,7 @@ impl Cpu {
     /// load the dest reg with the src reg value
     /// LD A, B
     fn ld_reg_reg(&mut self, dst: RegisterCode, src: RegisterCode) {
-        self.registers[dst as usize] = self.registers[src as usize];
+        self.reg[dst as usize] = self.reg[src as usize];
     }
 
     /// load the dest reg with the literal value
@@ -401,18 +360,18 @@ impl Cpu {
     fn ld_reg_lit(&mut self, dst: RegisterCode) {
         let literal = self.next_byte();
 
-        self.registers[dst as usize] = literal as u16;
+        self.reg[dst as usize] = literal as u16;
     }
 
     /// load the dest reg with value pointed to by the address passed in
     fn ld_reg_addr(&mut self, dst: RegisterCode, addr: u16) {
         let value = self.buffer[addr as usize];
 
-        self.registers[dst as usize] = value as u16
+        self.reg[dst as usize] = value as u16
     }
 
     fn ld_addr_reg(&mut self, addr: u16, src: RegisterCode) {
-        let value = self.registers[src as usize];
+        let value = self.reg[src as usize];
 
         self.buffer[addr as usize] = value as u8;
     }
@@ -432,7 +391,7 @@ impl Cpu {
 
     /* ---------------------- Incrementing ----------------- */
     fn inc_reg(&mut self, reg: RegisterCode) {
-        let mut val = self.registers[reg as usize];
+        let mut val = self.reg[reg as usize];
 
         self.set_flag(Flags::OverflowParity, val == 0x7F);
         self.set_flag(Flags::HalfCarry, val & 0b1111 == 0b1111);
@@ -441,11 +400,11 @@ impl Cpu {
         val += 1;
         val %= 0xFF + 1;
 
-        self.set_flag(Flags::Sign, (val as i8) < 0);
+        self.set_flag(Flags::Sign, (val & 0x80) > 0);
         self.set_flag(Flags::Zero, val == 0);
         self.set_flag(Flags::AddSubtract, false);
 
-        self.registers[reg as usize] = val;
+        self.reg[reg as usize] = val;
     }
 
     fn inc_addr(&mut self, addr: u16) {
@@ -478,7 +437,7 @@ impl Cpu {
 
     /// Decrement the register by 1
     fn dec_reg(&mut self, reg: RegisterCode) {
-        let mut val = self.registers[reg as usize];
+        let mut val = self.reg[reg as usize];
 
         self.set_flag(Flags::AddSubtract, true);
         self.set_flag(Flags::OverflowParity, val == 0x80);
@@ -496,7 +455,7 @@ impl Cpu {
         self.set_flag(Flags::Sign, val > 0x80);
         self.set_flag(Flags::Zero, val == 0);
 
-        self.registers[reg as usize] = val;
+        self.reg[reg as usize] = val;
     }
 
     /// Decrement the register by 1
@@ -707,7 +666,7 @@ impl Cpu {
             parity ^= val & 1;
             val >>= 1;
         }
-        self.set_flag(Flags::OverflowParity, parity > 0);
+        self.set_flag(Flags::OverflowParity, parity == 0);
 
         result
     }
@@ -746,7 +705,7 @@ impl Cpu {
             parity ^= val & 1;
             val >>= 1;
         }
-        self.set_flag(Flags::OverflowParity, parity > 0);
+        self.set_flag(Flags::OverflowParity, parity == 0);
 
         result
     }
@@ -785,7 +744,7 @@ impl Cpu {
             parity ^= val & 1;
             val >>= 1;
         }
-        self.set_flag(Flags::OverflowParity, parity > 0);
+        self.set_flag(Flags::OverflowParity, parity == 0);
 
         result
     }
@@ -884,6 +843,26 @@ impl Cpu {
 
         self.set_reg_value(RegisterCode::A, ((a >> 1) | (carry_out << 7)) as u16);
     }
+
+    /* ============================ JUMP INSTRUCTIONS ============================= */
+    /// Jump to the specified address
+    fn jmp(&mut self, addr: u16) {
+        self.set_reg_value_16(RegisterCode16::PC, addr);
+    }
+
+    /// Jump to the offset specified by the next byte
+    fn jmp_rel(&mut self) {
+        let addr = self.rel_addr();
+
+        self.set_reg_value_16(RegisterCode16::PC, addr);
+    }
+
+    /// Execute a jump to the specified address if the flag matches the condition passed in
+    fn jmp_cond(&mut self, addr: u16, flag: Flags, is_set: bool) {
+        if self.flag(flag) == is_set {
+            self.jmp(addr);
+        }
+    }
 }
 
 /* --------------------------------- TESTING --------------------------------- */
@@ -891,7 +870,7 @@ impl Cpu {
 #[cfg(test)]
 impl Cpu {
     fn set_pc(&mut self, pc: u16) {
-        self.registers[RegisterCode::PC as usize] = pc;
+        self.spec_reg[RegisterCode16::PC as usize] = pc as u32;
     }
 }
 
@@ -987,17 +966,10 @@ mod tests {
     #[test]
     fn test_register_indexed_addressing() {
         let mut cpu = get_cpu();
-        cpu.set_reg_value(RegisterCode::IY, 0xa015);
+        cpu.set_reg_value_16(RegisterCode16::IY, 0xa015);
 
         // 0xAB = -85
-        assert_eq!(0xa015 - 85, cpu.index_addr(RegisterCode::IY));
-    }
-
-    #[test]
-    #[should_panic]
-    fn panic_on_invalid_register_indexed_addressing() {
-        let mut cpu = get_cpu();
-        cpu.index_addr(RegisterCode::A);
+        assert_eq!(0xa015 - 85, cpu.index_addr(RegisterCode16::IY));
     }
 
     #[test]
@@ -1014,25 +986,25 @@ mod tests {
         let mut cpu = get_cpu();
 
         cpu.set_flag(Flags::Carry, false);
-        assert_eq!(0, (cpu.registers[RegisterCode::Flags as usize]) & 1);
+        assert_eq!(0, (cpu.reg[RegisterCode::Flags as usize]) & 1);
         cpu.set_flag(Flags::Carry, true);
-        assert_eq!(1, (cpu.registers[RegisterCode::Flags as usize]) & 1);
+        assert_eq!(1, (cpu.reg[RegisterCode::Flags as usize]) & 1);
 
         cpu.set_flag(Flags::Sign, false);
-        assert_eq!(0, (cpu.registers[RegisterCode::Flags as usize] >> 7) & 1);
+        assert_eq!(0, (cpu.reg[RegisterCode::Flags as usize] >> 7) & 1);
 
         cpu.set_flag(Flags::Sign, true);
-        assert_eq!(1, (cpu.registers[RegisterCode::Flags as usize] >> 7) & 1);
+        assert_eq!(1, (cpu.reg[RegisterCode::Flags as usize] >> 7) & 1);
     }
 
     #[test]
     fn test_get_flags() {
         let mut cpu = get_cpu();
 
-        cpu.registers[RegisterCode::Flags as usize] = 0b10; //< AddSubtract is now set
+        cpu.reg[RegisterCode::Flags as usize] = 0b10; //< AddSubtract is now set
         assert_eq!(true, cpu.flag(Flags::AddSubtract));
 
-        cpu.registers[RegisterCode::Flags as usize] = 0b11110;
+        cpu.reg[RegisterCode::Flags as usize] = 0b11110;
         assert_eq!(false, cpu.flag(Flags::Carry));
     }
 
@@ -1043,7 +1015,7 @@ mod tests {
         // test normal
         cpu.set_reg_value(RegisterCode::A, 0x0);
         cpu.inc_reg(RegisterCode::A);
-        assert_eq!(1, cpu.registers[RegisterCode::A as usize]);
+        assert_eq!(1, cpu.reg[RegisterCode::A as usize]);
         assert_eq!(false, cpu.flag(Flags::OverflowParity));
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(false, cpu.flag(Flags::Sign));
@@ -1053,7 +1025,7 @@ mod tests {
         // test half carry flag
         cpu.set_reg_value(RegisterCode::A, 0b1101_1111);
         cpu.inc_reg(RegisterCode::A);
-        assert_eq!(0b1110_0000, cpu.registers[RegisterCode::A as usize]);
+        assert_eq!(0b1110_0000, cpu.reg[RegisterCode::A as usize]);
         assert_eq!(false, cpu.flag(Flags::OverflowParity));
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(true, cpu.flag(Flags::Sign));
@@ -1062,7 +1034,7 @@ mod tests {
         // test overflow
         cpu.set_reg_value(RegisterCode::A, 0xFF);
         cpu.inc_reg(RegisterCode::A);
-        assert_eq!(0, cpu.registers[RegisterCode::A as usize]);
+        assert_eq!(0, cpu.reg[RegisterCode::A as usize]);
         assert_eq!(false, cpu.flag(Flags::OverflowParity));
         assert_eq!(true, cpu.flag(Flags::Zero));
         assert_eq!(false, cpu.flag(Flags::Sign));
@@ -1071,7 +1043,7 @@ mod tests {
         // test wrap around to negative
         cpu.set_reg_value(RegisterCode::A, 0x7F);
         cpu.inc_reg(RegisterCode::A);
-        assert_eq!(-128, cpu.registers[RegisterCode::A as usize] as i8);
+        assert_eq!(-128, cpu.reg[RegisterCode::A as usize] as i8);
         assert_eq!(true, cpu.flag(Flags::OverflowParity));
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(true, cpu.flag(Flags::Sign));
@@ -1085,7 +1057,7 @@ mod tests {
         // test normal dec
         cpu.set_reg_value(RegisterCode::A, 1);
         cpu.dec_reg(RegisterCode::A);
-        assert_eq!(0, cpu.registers[RegisterCode::A as usize]);
+        assert_eq!(0, cpu.reg[RegisterCode::A as usize]);
         assert_eq!(false, cpu.flag(Flags::OverflowParity));
         assert_eq!(true, cpu.flag(Flags::Zero));
         assert_eq!(false, cpu.flag(Flags::Sign));
@@ -1095,7 +1067,7 @@ mod tests {
         // test wrap around
         cpu.set_reg_value(RegisterCode::A, 0);
         cpu.dec_reg(RegisterCode::A);
-        assert_eq!(0xFF, cpu.registers[RegisterCode::A as usize]);
+        assert_eq!(0xFF, cpu.reg[RegisterCode::A as usize]);
         assert_eq!(false, cpu.flag(Flags::OverflowParity));
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(true, cpu.flag(Flags::Sign));
@@ -1105,7 +1077,7 @@ mod tests {
         // test wrap around
         cpu.set_reg_value(RegisterCode::A, 0x80);
         cpu.dec_reg(RegisterCode::A);
-        assert_eq!(0x7F, cpu.registers[RegisterCode::A as usize]);
+        assert_eq!(0x7F, cpu.reg[RegisterCode::A as usize]);
         assert_eq!(true, cpu.flag(Flags::OverflowParity));
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(false, cpu.flag(Flags::Sign));
@@ -1115,7 +1087,7 @@ mod tests {
         // test half adder
         cpu.set_reg_value(RegisterCode::A, 0b1011_0000);
         cpu.dec_reg(RegisterCode::A);
-        assert_eq!(0b1010_1111, cpu.registers[RegisterCode::A as usize]);
+        assert_eq!(0b1010_1111, cpu.reg[RegisterCode::A as usize]);
         assert_eq!(false, cpu.flag(Flags::OverflowParity));
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(true, cpu.flag(Flags::Sign));

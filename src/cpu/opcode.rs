@@ -288,7 +288,18 @@ pub enum Opcode {
     Rla = 0x17,
 
     Rrca = 0x0F,
-    Rra = 01F,
+    Rra = 0x1F,
+
+    // JP Instructions
+    JpLit = 0xC3,
+    JpNzLit = 0xC2,
+    JpNcLit = 0xD2,
+    JpPoLit = 0xE2,
+    JpPLit = 0xF2,
+    JpZLit = 0xCA,
+    JpCLit = 0xDA,
+    JpPeLit = 0xEA,
+    JpMLit = 0xFA,
 }
 
 impl Opcode {
@@ -301,6 +312,7 @@ impl Opcode {
     }
 
     pub fn operate(cpu: &mut Cpu, opcode: Opcode) {
+        use super::Flags;
         match opcode {
             // ld Reg, Reg
             Opcode::LdBB => cpu.ld_reg_reg(RegisterCode::B, RegisterCode::B),
@@ -647,11 +659,47 @@ impl Opcode {
                 let val = cpu.imm_addr();
                 cpu.cp_a_lit(val);
             }
-            Opcode::Rlca=> cpu.rlca(),
+            Opcode::Rlca => cpu.rlca(),
             Opcode::Rla => cpu.rla(),
-            Opcode::Rrca=> cpu.rrca(),
+            Opcode::Rrca => cpu.rrca(),
             Opcode::Rra => cpu.rra(),
-            
+
+            Opcode::JpLit => {
+                let addr = cpu.imm_addr_ex();
+                cpu.jmp(addr);
+            }
+            Opcode::JpNzLit => {
+                let addr = cpu.imm_addr_ex();
+                cpu.jmp_cond(addr, Flags::Zero, false);
+            }
+            Opcode::JpNcLit => {
+                let addr = cpu.imm_addr_ex();
+                cpu.jmp_cond(addr, Flags::Carry, false);
+            }
+            Opcode::JpPoLit => {
+                let addr = cpu.imm_addr_ex();
+                cpu.jmp_cond(addr, Flags::OverflowParity, false);
+            }
+            Opcode::JpPLit => {
+                let addr = cpu.imm_addr_ex();
+                cpu.jmp_cond(addr, Flags::Sign, false);
+            }
+            Opcode::JpZLit => {
+                let addr = cpu.imm_addr_ex();
+                cpu.jmp_cond(addr, Flags::Zero, true);
+            }
+            Opcode::JpCLit => {
+                let addr = cpu.imm_addr_ex();
+                cpu.jmp_cond(addr, Flags::Carry, true);
+            }
+            Opcode::JpPeLit => {
+                let addr = cpu.imm_addr_ex();
+                cpu.jmp_cond(addr, Flags::OverflowParity, true);
+            }
+            Opcode::JpMLit => {
+                let addr = cpu.imm_addr_ex();
+                cpu.jmp_cond(addr, Flags::Sign, true);
+            }
             // Extended Opcodes
             Opcode::Ix => panic!("Unimplemented!"),
             Opcode::Iy => panic!("Unimplemented!"),
@@ -871,11 +919,21 @@ impl Opcode {
             Opcode::CpAHLptr => String::from("Cp A, (HL)"),
             Opcode::CpALit => String::from("Cp A, *"),
 
-            Opcode::Rlca => String::from("Rlca"),            
+            Opcode::Rlca => String::from("Rlca"),
             Opcode::Rla => String::from("Rla"),
             Opcode::Rrca => String::from("Rrca"),
             Opcode::Rra => String::from("Rra"),
-           
+
+            Opcode::JpLit => String::from("Jmp"),
+            Opcode::JpNzLit => String::from("Jmp nz"),
+            Opcode::JpNcLit => String::from("Jmp nc"),
+            Opcode::JpPoLit => String::from("Jmp po"),
+            Opcode::JpPLit => String::from("Jmp p"),
+            Opcode::JpZLit => String::from("Jmp z"),
+            Opcode::JpCLit => String::from("Jmp c"),
+            Opcode::JpPeLit => String::from("Jmp pe"),
+            Opcode::JpMLit => String::from("Jmp m"),
+
             // Extended Opcodes
             Opcode::Ix => panic!("Unimplemented!"),
             Opcode::Iy => panic!("Unimplemented!"),
@@ -886,7 +944,8 @@ impl Opcode {
     }
 }
 
-#[cfg(test)] mod test {
+#[cfg(test)]
+mod test {
     use super::*;
     #[test]
     fn test_decode() {
