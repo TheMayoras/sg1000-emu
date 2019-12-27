@@ -1,5 +1,8 @@
 #![allow(dead_code)]
 
+use opcode::Opcode;
+use std::mem;
+
 // DONE:
 // 1). LD for main group
 // 2). INC for main group
@@ -7,10 +10,7 @@
 
 mod opcode;
 
-use opcode::Opcode;
-
 // define registers
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum TriStateLogic {
     On,
@@ -48,9 +48,9 @@ pub enum RegisterCode16 {
 }
 
 #[repr(u8)]
-enum Flags {
+pub enum Flags {
     Carry = 0,
-    AddSubtract,
+    Subtract,
     OverflowParity,
     NotUsed1,
     HalfCarry,
@@ -63,14 +63,17 @@ enum Flags {
 // NOTE: all addresses are byte based, so the program counter points to a byte
 pub struct Cpu {
     clock:                u64,
+    clock_queue:          u64,
     read_write:           TriStateLogic,
-    interrupt_enable:     bool,
+    iff1:                 bool,
     iff2:                 bool,
-    reg:                  [u16; 8], // register values
-    alt_reg:              [u16; 8],
-    spec_reg:             [u32; 6],
+    interrupt_count:      u8,
+    reg:                  [u16; 8], // contains A, F, B, C, D, E, H, L
+    alt_reg:              [u16; 8], // contains alternate A, F, B, C, D, E, H, L
+    spec_reg:             [u32; 6], // contains I, IX, IY, PC, SP, 
     buffer:               Vec<u8>,
     stack:                Vec<u8>,
+    halted:               bool,
 }
 
 impl Cpu {
@@ -81,14 +84,17 @@ impl Cpu {
         buf.resize(256*256, 0);
         Cpu {
             clock:                0,
+            clock_queue:          0,
             read_write:           TriStateLogic::Disconnect,
-            interrupt_enable:     false,
+            iff1:                 false,
             iff2:                 false,
             reg:                  [0; 8],
             alt_reg:              [0; 8],
             spec_reg:             [0; 6],
             buffer:               buf,
             stack:                Vec::new(),
+            halted:               false,
+            interrupt_count:      0,
         }
     }
 
@@ -175,18 +181,23 @@ impl Cpu {
     }
 
     /// Get the value of a flag
-    fn flag(&self, f: Flags) -> bool {
+    #[inline]
+    pub fn flag(&self, f: Flags) -> bool {
         // get the registers value.  shift that right so that the least significant bit is the flag.
         //  & with 1 to remove all other values.  return true if result is 1
         ((self.reg[RegisterCode::Flags as usize]) >> f as u8) & 1 == 1
     }
 
-    pub fn inc_clock_n(&mut self, n: u64) {
+    pub fn tick_clock(&mut self, n: u64) {
         self.clock += n
     }
 
-    pub fn inc_clock(&mut self) {
-        self.inc_clock_n(1)
+    fn queue_clock_tick(&mut self, n: u64) {
+        self.clock_queue += n;
+    }
+
+    fn flush_ticks(&mut self) {
+        self.tick_clock(self.clock_queue);
     }
 
     fn set_reg_value(&mut self, code: RegisterCode, value: u16) {
@@ -199,16 +210,44 @@ impl Cpu {
         self.read_write = rw;
     }
 
-    // fn push(&mut self, value: u8) {
-    //     self.stack.push(value);
-    //     self.reg[RegisterCode::SP as usize] += 8; // inc by a byte
-    // }
+    /// Push the value onto the stack.
+    ///
+    /// This function decrements the stack pointer and pushes the value onto the stack
+    fn push(&mut self, value: u8) {
+        let mut pc = self.reg_value_16(RegisterCode16::SP);
+        pc += 1;
+        self.set_reg_value_16(RegisterCode16::SP, pc);
+
+        self.store(pc, value);
+    }
+
+    /// Pop the value off the stack
+    ///
+    /// This function pops the value off of the stack and increments the stack pointer.
+    fn pop(&mut self) -> u8 {
+        let val = self.fetch(self.reg_value_16(RegisterCode16::SP));
+        let mut pc = self.reg_value_16(RegisterCode16::SP);
+        pc -= 1;
+        self.set_reg_value_16(RegisterCode16::SP, pc);
+
+        val
+    }
+
+    /// Push the contents of the PC onto the stack
+    fn push_pc(&mut self) {
+        let pc = self.reg_value_16(RegisterCode16::PC);
+        self.push((pc >> 8) as u8 & 0xFF);
+        self.push(pc as u8 & 0xFF);
+    }
+
+    /// Pop the contents of the PC off of the stack
+    fn pop_pc(&mut self) {}
 
     fn fetch(&self, addr: u16) -> u8 {
         self.buffer[addr as usize]
     }
 
-    fn set_mem(&mut self, addr: u16, val: u8) {
+    fn store(&mut self, addr: u16, val: u8) {
         self.buffer[addr as usize] = val;
     }
 }
@@ -247,12 +286,6 @@ impl Cpu {
     }
 
     /* --------------------------------- ADDRESSING MODES --------------------------------- */
-    /// Implied Addressing
-    ///
-    /// Returns 0.  This type of addressing is used when the address is implied in the opcode
-    fn impl_addr(&self) -> u16 {
-        0
-    }
 
     /// Immediate Addressing Mode
     ///
@@ -281,11 +314,13 @@ impl Cpu {
     /// Relative Addressing
     ///
     /// Returns the address of the next byte in memory added to the current program counter
-    /// (the program counter is currently pointing to the instruction after the one using relative addressing).
-    /// This means that from the opcode using relative addressing we can move +129 to -126 bytes
+    /// (the program counter is currently pointing to the instruction after the one using
+    /// relative addressing). This means that from the opcode using relative addressing we
+    /// can move +129 to -126 bytes
     fn rel_addr(&mut self) -> u16 {
         // cast to signed 16 bit
-        let byte = self.next_byte() as i8 as i16; // cast to i8 to convert to negative.  cast to i16 so we can add to the pc value
+        let byte = self.next_byte() as i8 as i16; // cast to i8 to convert to negative.
+                                                  // cast to i16 so we can add to the pc value
 
         // cast to signed 16 bit
         let cur_pc = self.get_pc() as i16;
@@ -297,7 +332,8 @@ impl Cpu {
 
     /// Extended Addressing
     ///
-    /// Returns the address specified by the next _two_ bytes of memory starting at the current program counter.
+    /// Returns the address specified by the next _two_ bytes of memory
+    /// starting at the current program counter.
     /// The function increments the program counter by two
     fn ext_addr(&mut self) -> u16 {
         let addr_lower = self.next_byte() as u16;
@@ -314,7 +350,11 @@ impl Cpu {
     /// This function will panic if an invalid register is supplied.
     fn index_addr(&mut self, register: RegisterCode16) -> u16 {
         if register != RegisterCode16::IX && register != RegisterCode16::IY {
-            panic!("Attempting to use register '{:?}' to perform Indexed Addressing.  Only Registers 'IX' and 'IY' are able to be used for this addressing mode!", register);
+            panic!(
+                "Attempting to use register '{:?}' to perform Indexed Addressing. \
+                 Only Registers 'IX' and 'IY' are able to be used for this addressing mode!",
+                register
+            );
         }
 
         let reg_val = self.reg_value_16(register) as i16 as i32;
@@ -340,19 +380,23 @@ impl Cpu {
     /// This function will handle changing all internal Cpu values and will write to
     /// any necessary busses
     pub fn do_operation(&mut self) {
-        unimplemented!();
+        let opcode = self.next_byte();
+        Opcode::operate_u8(self, opcode);
     }
 }
 
 // Operations
 impl Cpu {
     /// No Op
-    fn noop(&self) {}
+    fn noop(&mut self) {
+        self.tick_clock(4);
+    }
 
     /// load the dest reg with the src reg value
     /// LD A, B
     fn ld_reg_reg(&mut self, dst: RegisterCode, src: RegisterCode) {
         self.reg[dst as usize] = self.reg[src as usize];
+        self.tick_clock(4);
     }
 
     /// load the dest reg with the literal value
@@ -360,14 +404,21 @@ impl Cpu {
     fn ld_reg_lit(&mut self, dst: RegisterCode) {
         let literal = self.next_byte();
 
+        println!("Loading {:?} with {}", dst, literal);
+
         self.reg[dst as usize] = literal as u16;
+        self.tick_clock(7);
     }
 
     /// load the dest reg with value pointed to by the address passed in
     fn ld_reg_addr(&mut self, dst: RegisterCode, addr: u16) {
+        use RegisterCode::*;
         let value = self.buffer[addr as usize];
 
-        self.reg[dst as usize] = value as u16
+        self.reg[dst as usize] = value as u16;
+
+        self.flush_ticks();
+        self.tick_clock(7);
     }
 
     fn ld_addr_reg(&mut self, addr: u16, src: RegisterCode) {
@@ -384,8 +435,37 @@ impl Cpu {
         self.set_reg_value_16(reg, lit);
     }
 
+    fn ld_reg16_addr(&mut self, dst: RegisterCode16, addr: u16) {
+        let addr_low = self.fetch(addr) as u16;
+        let addr_high = self.fetch(addr + 1) as u16;
+
+        self.set_reg_value_16(dst, (addr_high << 8) | addr_low);
+    }
+
     fn ld_reg16_reg16(&mut self, dst: RegisterCode16, src: RegisterCode16) {
         let val = self.reg_value_16(src);
+        self.set_reg_value_16(dst, val);
+    }
+
+    fn ld_addr_reg16(&mut self, addr: u16, src: RegisterCode16) {
+        let val = self.reg_value_16(src);
+
+        self.store(addr, (val & 0xFF) as u8);
+        self.store(addr, ((val >> 8) & 0xFF) as u8);
+    }
+
+    fn push_reg16(&mut self, src: RegisterCode16) {
+        let val = self.reg_value_16(src);
+
+        // high order byte is stored first
+        self.push(((val >> 8) & 0xFF) as u8);
+        self.push((val & 0xFF) as u8);
+    }
+
+    fn pop_reg16(&mut self, dst: RegisterCode16) {
+        let mut val = self.pop() as u16;
+        val = (val << 8) | self.pop() as u16;
+
         self.set_reg_value_16(dst, val);
     }
 
@@ -402,7 +482,7 @@ impl Cpu {
 
         self.set_flag(Flags::Sign, (val & 0x80) > 0);
         self.set_flag(Flags::Zero, val == 0);
-        self.set_flag(Flags::AddSubtract, false);
+        self.set_flag(Flags::Subtract, false);
 
         self.reg[reg as usize] = val;
     }
@@ -419,9 +499,9 @@ impl Cpu {
 
         self.set_flag(Flags::Sign, (val as i8) < 0);
         self.set_flag(Flags::Zero, val == 0);
-        self.set_flag(Flags::AddSubtract, false);
+        self.set_flag(Flags::Subtract, false);
 
-        self.set_mem(addr, val as u8);
+        self.store(addr, val as u8);
     }
 
     /// Increment a 16 bit register or register pair.  
@@ -439,7 +519,7 @@ impl Cpu {
     fn dec_reg(&mut self, reg: RegisterCode) {
         let mut val = self.reg[reg as usize];
 
-        self.set_flag(Flags::AddSubtract, true);
+        self.set_flag(Flags::Subtract, true);
         self.set_flag(Flags::OverflowParity, val == 0x80);
         // set half carry if there is a borrow from bit 4 to 3
         self.set_flag(Flags::HalfCarry, val & 0b1111 == 0);
@@ -462,7 +542,7 @@ impl Cpu {
     fn dec_addr(&mut self, addr: u16) {
         let mut val = self.fetch(addr);
 
-        self.set_flag(Flags::AddSubtract, true);
+        self.set_flag(Flags::Subtract, true);
         self.set_flag(Flags::OverflowParity, val == 0x80);
         // set half carry if there is a borrow from bit 4 to 3
         self.set_flag(Flags::HalfCarry, val & 0b1111 == 0);
@@ -478,7 +558,7 @@ impl Cpu {
         self.set_flag(Flags::Sign, val > 0x80);
         self.set_flag(Flags::Zero, val == 0);
 
-        self.set_mem(addr, val);
+        self.store(addr, val);
     }
 
     /// Decrement a 16 bit register or register pair.  
@@ -520,7 +600,7 @@ impl Cpu {
         );
         self.set_flag(Flags::Sign, result >= 0x80);
         self.set_flag(Flags::Zero, result == 0);
-        self.set_flag(Flags::AddSubtract, false);
+        self.set_flag(Flags::Subtract, false);
 
         result
     }
@@ -529,6 +609,8 @@ impl Cpu {
     fn add_a_reg(&mut self, reg: RegisterCode) {
         let operand = self.reg_value(reg) as u16;
         let acc = self.reg_value(RegisterCode::A) as u16;
+
+        println!("Adding {:?} to {:?}", operand, acc);
 
         let result = self.add_val_val(acc, operand);
         self.set_reg_value(RegisterCode::A, result);
@@ -576,6 +658,21 @@ impl Cpu {
         self.set_reg_value(RegisterCode::A, result);
     }
 
+    fn add_reg16_reg16(&mut self, to: RegisterCode16, operand: RegisterCode16) {
+        let add_to = self.reg_value_16(to) as u32;
+        let with = self.reg_value_16(operand) as u32;
+
+        let mut result = add_to + with;
+        self.set_flag(Flags::Carry, result > 0xFFFF);
+        result %= 0xFFFF;
+
+        self.set_flag(Flags::Subtract, false);
+        // set the flag with the first 3 nibble overlow into the highnibble
+        self.set_flag(Flags::HalfCarry, (add_to & 0xFFF) + (with & 0xFFF) > 0xFFF);
+
+        self.set_reg_value_16(to, result as u16);
+    }
+
     /// Subtract the value in the operand from the Accumulator
     ///
     /// This function sets all of the necessary flags the subtraction and returns the result
@@ -591,9 +688,11 @@ impl Cpu {
             0xFF - remainder + 1
         };
 
+        println!("Subtracting... {} - {} = {}", acc, operand, result);
+
         self.set_flag(Flags::Sign, result > 0x80);
         self.set_flag(Flags::Zero, result == 0);
-        self.set_flag(Flags::AddSubtract, true);
+        self.set_flag(Flags::Subtract, true);
         // set half carry if 4th bit of acc == 0 and 4th bit of result != 0
         self.set_flag(Flags::HalfCarry, acc & 0x0F < operand & 0x0F);
         self.set_flag(
@@ -657,7 +756,7 @@ impl Cpu {
         self.set_flag(Flags::Sign, result >= 0x80);
         self.set_flag(Flags::Zero, result == 0);
         self.set_flag(Flags::HalfCarry, true);
-        self.set_flag(Flags::AddSubtract, false);
+        self.set_flag(Flags::Subtract, false);
         self.set_flag(Flags::Carry, false);
 
         let mut parity = 0;
@@ -696,7 +795,7 @@ impl Cpu {
         self.set_flag(Flags::Sign, result >= 0x80);
         self.set_flag(Flags::Zero, result == 0);
         self.set_flag(Flags::HalfCarry, false);
-        self.set_flag(Flags::AddSubtract, false);
+        self.set_flag(Flags::Subtract, false);
         self.set_flag(Flags::Carry, false);
 
         let mut parity = 0;
@@ -735,7 +834,7 @@ impl Cpu {
         self.set_flag(Flags::Sign, result >= 0x80);
         self.set_flag(Flags::Zero, result == 0);
         self.set_flag(Flags::HalfCarry, false);
-        self.set_flag(Flags::AddSubtract, false);
+        self.set_flag(Flags::Subtract, false);
         self.set_flag(Flags::Carry, false);
 
         let mut parity = 0;
@@ -776,7 +875,7 @@ impl Cpu {
         self.set_flag(Flags::Zero, result);
         self.set_flag(Flags::OverflowParity, val > a);
 
-        self.set_flag(Flags::AddSubtract, true);
+        self.set_flag(Flags::Subtract, true);
         self.set_flag(Flags::HalfCarry, (val & 0x0F) > (a & 0x0F));
 
         result
@@ -804,7 +903,7 @@ impl Cpu {
 
         self.set_flag(Flags::Carry, carry > 0);
         self.set_flag(Flags::HalfCarry, false);
-        self.set_flag(Flags::AddSubtract, false);
+        self.set_flag(Flags::Subtract, false);
 
         self.set_reg_value(RegisterCode::A, ((a << 1) | carry) as u16);
     }
@@ -816,7 +915,7 @@ impl Cpu {
 
         self.set_flag(Flags::Carry, carry_out > 0);
         self.set_flag(Flags::HalfCarry, false);
-        self.set_flag(Flags::AddSubtract, false);
+        self.set_flag(Flags::Subtract, false);
 
         self.set_reg_value(RegisterCode::A, ((a << 1) | carry_in) as u16);
     }
@@ -827,7 +926,7 @@ impl Cpu {
 
         self.set_flag(Flags::Carry, carry > 0);
         self.set_flag(Flags::HalfCarry, false);
-        self.set_flag(Flags::AddSubtract, false);
+        self.set_flag(Flags::Subtract, false);
 
         self.set_reg_value(RegisterCode::A, ((a >> 1) | (carry << 7)) as u16);
     }
@@ -839,7 +938,7 @@ impl Cpu {
 
         self.set_flag(Flags::Carry, carry_in > 0);
         self.set_flag(Flags::HalfCarry, false);
-        self.set_flag(Flags::AddSubtract, false);
+        self.set_flag(Flags::Subtract, false);
 
         self.set_reg_value(RegisterCode::A, ((a >> 1) | (carry_out << 7)) as u16);
     }
@@ -862,6 +961,196 @@ impl Cpu {
         if self.flag(flag) == is_set {
             self.jmp(addr);
         }
+    }
+
+    fn djnz(&mut self) {
+        let mut b = self.reg_value(RegisterCode::B);
+        b -= 1;
+        self.set_reg_value(RegisterCode::B, b as u16);
+
+        if b > 0 {
+            let addr = self.rel_addr();
+            self.set_reg_value_16(RegisterCode16::PC, addr);
+        }
+    }
+
+    fn ex_de_hl(&mut self) {
+        self.reg
+            .swap(RegisterCode::D as usize, RegisterCode::H as usize);
+        self.reg
+            .swap(RegisterCode::E as usize, RegisterCode::L as usize);
+    }
+
+    fn ex_af_altaf(&mut self) {
+        mem::swap(
+            &mut self.reg[RegisterCode::A as usize],
+            &mut self.alt_reg[RegisterCode::A as usize],
+        );
+
+        mem::swap(
+            &mut self.reg[RegisterCode::Flags as usize],
+            &mut self.alt_reg[RegisterCode::Flags as usize],
+        );
+    }
+
+    fn exx(&mut self) {
+        self.reg[RegisterCode::B as usize..]
+            .iter_mut()
+            .zip(self.alt_reg[RegisterCode::B as usize..].iter_mut())
+            .for_each(|(r, ar)| {
+                mem::swap(r, ar);
+            });
+    }
+
+    fn ex_spptr_reg(&mut self, reg_code: RegisterCode16) {
+        let sp = self.reg_value_16(RegisterCode16::SP);
+        let mut fetched_low = self.fetch(sp) as u16;
+        let mut fetched_high = self.fetch(sp + 1) as u16;
+
+        match reg_code {
+            RegisterCode16::HL => {
+                mem::swap(&mut self.reg[RegisterCode::H as usize], &mut fetched_high);
+                mem::swap(&mut self.reg[RegisterCode::L as usize], &mut fetched_low);
+            }
+
+            RegisterCode16::IX | RegisterCode16::IY => {
+                let mut val = ((fetched_high as u32) << 8) | fetched_low as u32;
+                mem::swap(&mut self.spec_reg[reg_code as usize], &mut val);
+
+                fetched_low = (val & 0xFF) as u16;
+                fetched_high = ((val >> 8) & 0xFF) as u16;
+            }
+
+            _ => panic!(
+                "Attempting to call Ex (SP), {:?}.  Only valid for IX, IY, or HL",
+                reg_code
+            ),
+        }
+        self.store(sp, fetched_low as u8);
+        self.store(sp + 1, fetched_high as u8);
+    }
+
+    /// This instruction conditionally adjusts the Accumulator for BCD addition and
+    /// subtraction operations
+    ///
+    /// See: https://stackoverflow.com/questions/8119577/z80-daa-instruction
+    fn daa(&mut self) {
+        let mut acc = self.reg_value(RegisterCode::A) as u16;
+        let carry = self.flag(Flags::Carry)
+            || (acc & 0xF0) > 0x90
+            || (acc & 0xF0) >= 0x90 && (acc & 0x0F) > 0x90;
+
+        let hcarry = (acc & 0x0F) > 0x90
+            || self.flag(Flags::Subtract) && self.flag(Flags::HalfCarry) && (acc & 0xF0) <= 0x5;
+
+        let func = |dest: &mut u16, val| {
+            if self.flag(Flags::Subtract) {
+                *dest += 0x100 - val;
+            } else {
+                *dest += val;
+            }
+        };
+
+        // we have to add 6 to in order to "wrap" the lower 4 bits to 0
+        if self.flag(Flags::HalfCarry) || (acc & 0xF) > 9 {
+            func(&mut acc, 0x6);
+        }
+
+        if self.flag(Flags::Carry) || (acc & 0xF0) > 0x90 {
+            func(&mut acc, 0x60);
+        }
+
+        self.set_flag(Flags::Carry, carry);
+        self.set_flag(Flags::HalfCarry, hcarry);
+        self.set_flag(Flags::Zero, acc == 0);
+        self.set_flag(Flags::Sign, acc >= 080);
+
+        let mut parity = 0;
+        let mut val = acc;
+        while val > 0 {
+            parity ^= val & 1;
+            val >>= 1;
+        }
+
+        self.set_flag(Flags::OverflowParity, parity > 0);
+    }
+
+    fn cpl(&mut self) {
+        let mut acc = self.reg_value(RegisterCode::A);
+        acc = !acc;
+        self.set_reg_value(RegisterCode::A, acc as u16);
+
+        self.set_flag(Flags::HalfCarry, true);
+        self.set_flag(Flags::Subtract, true);
+    }
+
+    fn ccf(&mut self) {
+        self.set_flag(Flags::HalfCarry, self.flag(Flags::Carry));
+        self.set_flag(Flags::Subtract, false);
+        self.set_flag(Flags::Carry, !self.flag(Flags::Carry));
+    }
+
+    fn scf(&mut self) {
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::Subtract, false);
+        self.set_flag(Flags::Sign, true);
+    }
+
+    fn halt(&mut self) {
+        self.halted = true;
+    }
+
+    fn disable_intrpt(&mut self) {
+        self.iff2 = false;
+        self.iff1 = false;
+    }
+
+    fn enable_intrpt(&mut self) {
+        self.iff2 = true;
+        self.iff1 = true;
+        self.interrupt_count = 1;
+    }
+
+    /* ====================== CALL and RET ============================= */
+
+    fn call_addr(&mut self, addr: u16) {
+        self.push_pc();
+        self.set_reg_value_16(RegisterCode16::PC, addr);
+    }
+
+    fn call_cond_addr(&mut self, addr: u16, flag: Flags, is_set: bool) {
+        if self.flag(flag) != is_set {
+            return;
+        }
+
+        self.push_pc();
+        self.set_reg_value_16(RegisterCode16::PC, addr);
+    }
+
+    fn ret(&mut self) {
+        let low = self.pop() as u16;
+        let high = self.pop() as u16;
+
+        self.set_reg_value_16(RegisterCode16::PC, (high << 8) | low);
+    }
+
+    fn ret_cond(&mut self, flag: Flags, is_set: bool) {
+        if self.flag(flag) != is_set {
+            return;
+        }
+
+        let low = self.pop() as u16;
+        let high = self.pop() as u16;
+
+        self.set_reg_value_16(RegisterCode16::PC, (high << 8) | low);
+    }
+
+    fn rst_lit(&mut self, offset: u8) {
+        let offset = offset as u16;
+
+        self.push_pc();
+
+        self.set_reg_value_16(RegisterCode16::PC, offset);
     }
 }
 
@@ -886,10 +1175,10 @@ mod tests {
         let mut cpu = Cpu::new(Vec::new());
         assert_eq!(0, cpu.clock());
 
-        cpu.inc_clock();
+        cpu.tick_clock();
         assert_eq!(1, cpu.clock());
 
-        cpu.inc_clock_n(5);
+        cpu.tick_clock(5);
         assert_eq!(6, cpu.clock());
     }
 
@@ -1001,8 +1290,8 @@ mod tests {
     fn test_get_flags() {
         let mut cpu = get_cpu();
 
-        cpu.reg[RegisterCode::Flags as usize] = 0b10; //< AddSubtract is now set
-        assert_eq!(true, cpu.flag(Flags::AddSubtract));
+        cpu.reg[RegisterCode::Flags as usize] = 0b10; //< Subtract is now set
+        assert_eq!(true, cpu.flag(Flags::Subtract));
 
         cpu.reg[RegisterCode::Flags as usize] = 0b11110;
         assert_eq!(false, cpu.flag(Flags::Carry));
@@ -1020,7 +1309,7 @@ mod tests {
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(false, cpu.flag(Flags::Sign));
         assert_eq!(false, cpu.flag(Flags::HalfCarry));
-        assert_eq!(false, cpu.flag(Flags::AddSubtract));
+        assert_eq!(false, cpu.flag(Flags::Subtract));
 
         // test half carry flag
         cpu.set_reg_value(RegisterCode::A, 0b1101_1111);
@@ -1062,7 +1351,7 @@ mod tests {
         assert_eq!(true, cpu.flag(Flags::Zero));
         assert_eq!(false, cpu.flag(Flags::Sign));
         assert_eq!(false, cpu.flag(Flags::HalfCarry));
-        assert_eq!(true, cpu.flag(Flags::AddSubtract));
+        assert_eq!(true, cpu.flag(Flags::Subtract));
 
         // test wrap around
         cpu.set_reg_value(RegisterCode::A, 0);
@@ -1072,7 +1361,7 @@ mod tests {
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(true, cpu.flag(Flags::Sign));
         assert_eq!(true, cpu.flag(Flags::HalfCarry));
-        assert_eq!(true, cpu.flag(Flags::AddSubtract));
+        assert_eq!(true, cpu.flag(Flags::Subtract));
 
         // test wrap around
         cpu.set_reg_value(RegisterCode::A, 0x80);
@@ -1082,7 +1371,7 @@ mod tests {
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(false, cpu.flag(Flags::Sign));
         assert_eq!(true, cpu.flag(Flags::HalfCarry));
-        assert_eq!(true, cpu.flag(Flags::AddSubtract));
+        assert_eq!(true, cpu.flag(Flags::Subtract));
 
         // test half adder
         cpu.set_reg_value(RegisterCode::A, 0b1011_0000);
@@ -1092,7 +1381,7 @@ mod tests {
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(true, cpu.flag(Flags::Sign));
         assert_eq!(true, cpu.flag(Flags::HalfCarry));
-        assert_eq!(true, cpu.flag(Flags::AddSubtract));
+        assert_eq!(true, cpu.flag(Flags::Subtract));
     }
 
     #[test]
@@ -1107,7 +1396,7 @@ mod tests {
         assert_eq!(true, cpu.flag(Flags::Zero));
         assert_eq!(false, cpu.flag(Flags::Sign));
         assert_eq!(true, cpu.flag(Flags::HalfCarry));
-        assert_eq!(false, cpu.flag(Flags::AddSubtract));
+        assert_eq!(false, cpu.flag(Flags::Subtract));
 
         cpu.set_reg_value(RegisterCode::A, 0b11110110); // -10
         cpu.set_reg_value(RegisterCode::B, 15);
@@ -1117,7 +1406,7 @@ mod tests {
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(false, cpu.flag(Flags::Sign));
         assert_eq!(true, cpu.flag(Flags::HalfCarry));
-        assert_eq!(false, cpu.flag(Flags::AddSubtract));
+        assert_eq!(false, cpu.flag(Flags::Subtract));
 
         cpu.set_reg_value(RegisterCode::A, 0b10011100); // -100
         cpu.set_reg_value(RegisterCode::B, 15);
@@ -1127,7 +1416,7 @@ mod tests {
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(true, cpu.flag(Flags::Sign));
         assert_eq!(true, cpu.flag(Flags::HalfCarry));
-        assert_eq!(false, cpu.flag(Flags::AddSubtract));
+        assert_eq!(false, cpu.flag(Flags::Subtract));
 
         cpu.set_reg_value(RegisterCode::A, 0x7F); // 127
         cpu.set_reg_value(RegisterCode::B, 1); // -> should wrap around and overflow
@@ -1137,7 +1426,7 @@ mod tests {
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(true, cpu.flag(Flags::Sign));
         assert_eq!(true, cpu.flag(Flags::HalfCarry));
-        assert_eq!(false, cpu.flag(Flags::AddSubtract));
+        assert_eq!(false, cpu.flag(Flags::Subtract));
     }
 
     #[test]
@@ -1176,5 +1465,20 @@ mod tests {
         let result = cpu.sub_val_val(1, 0xFF, true);
         assert_eq!(1, result);
         assert_eq!(false, cpu.flag(Flags::OverflowParity));
+    }
+
+    #[test]
+    fn test_exx() {
+        let mut cpu = get_cpu();
+
+        cpu.set_reg_value(RegisterCode::B, 10);
+        cpu.set_reg_value(RegisterCode::A, 20);
+        cpu.exx();
+        assert_eq!(0, cpu.reg_value(RegisterCode::B));
+        assert_eq!(20, cpu.reg_value(RegisterCode::A));
+
+        cpu.exx();
+        assert_eq!(10, cpu.reg_value(RegisterCode::B));
+        assert_eq!(20, cpu.reg_value(RegisterCode::A));
     }
 }

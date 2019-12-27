@@ -300,6 +300,57 @@ pub enum Opcode {
     JpCLit = 0xDA,
     JpPeLit = 0xEA,
     JpMLit = 0xFA,
+
+    // Relative Jump Instructions
+    JrLit = 0x18,
+    JrCLit = 0x38,
+    JrNcLit = 0x30,
+    JrZLit = 0x28,
+    JrNzLit = 0x20,
+
+    JpHLptr = 0xE9,
+    DJNz = 0x10,
+
+    // Ex opcodes
+    ExAfAf = 0x08,
+    ExSPptrHL = 0xE3,
+    Exx = 0xD9,
+    ExDEHL = 0xEB,
+
+    // Interrupts
+    Ei = 0xFB,
+    Di = 0xF3,
+
+    Daa = 0x27,
+
+    // Carry flag set and reset
+    Scf = 0x37,
+    Ccf = 0x3F,
+
+    // Call instructions
+    CallLit = 0xCD,
+    CallNz = 0xC4,
+    CallNc = 0xD4,
+    CallPo = 0xE4,
+    CallP = 0xF4,
+    CallZ = 0xCC,
+    CallC = 0xDC,
+    CallPe = 0xEC,
+    CallM = 0xFC,
+
+    // Return Instructions
+    Ret = 0xC9,
+    RetNz = 0xC0,
+    RetNc = 0xD0,
+    RetPo = 0xE0,
+    RetP = 0xF0,
+    RetZ = 0xC8,
+    RetC = 0xD8,
+    RetPe = 0xE8,
+    RetM = 0xF8,
+
+    // Halt
+    Halt = 0x76,
 }
 
 impl Opcode {
@@ -313,7 +364,10 @@ impl Opcode {
 
     pub fn operate(cpu: &mut Cpu, opcode: Opcode) {
         use super::Flags;
+        println!("Found opcode: {:?}", opcode);
         match opcode {
+            Opcode::NoOp => {}
+
             // ld Reg, Reg
             Opcode::LdBB => cpu.ld_reg_reg(RegisterCode::B, RegisterCode::B),
             Opcode::LdBC => cpu.ld_reg_reg(RegisterCode::B, RegisterCode::C),
@@ -366,7 +420,7 @@ impl Opcode {
             Opcode::LdAA => cpu.ld_reg_reg(RegisterCode::A, RegisterCode::A),
 
             // Load Reg, Literal
-            Opcode::LdBLit => cpu.ld_reg_lit(RegisterCode::C),
+            Opcode::LdBLit => cpu.ld_reg_lit(RegisterCode::B),
             Opcode::LdDLit => cpu.ld_reg_lit(RegisterCode::D),
             Opcode::LdHLit => cpu.ld_reg_lit(RegisterCode::H),
             Opcode::LdCLit => cpu.ld_reg_lit(RegisterCode::C),
@@ -700,12 +754,102 @@ impl Opcode {
                 let addr = cpu.imm_addr_ex();
                 cpu.jmp_cond(addr, Flags::Sign, true);
             }
+
+            Opcode::JrLit => {
+                let addr = cpu.rel_addr();
+                cpu.jmp(addr);
+            }
+
+            Opcode::JrCLit => {
+                let addr = cpu.rel_addr();
+                cpu.jmp_cond(addr, Flags::Carry, true);
+            }
+            Opcode::JrNcLit => {
+                let addr = cpu.rel_addr();
+                cpu.jmp_cond(addr, Flags::Carry, false);
+            }
+            Opcode::JrZLit => {
+                let addr = cpu.rel_addr();
+                cpu.jmp_cond(addr, Flags::Zero, true);
+            }
+            Opcode::JrNzLit => {
+                let addr = cpu.rel_addr();
+                cpu.jmp_cond(addr, Flags::Zero, false);
+            }
+            Opcode::JpHLptr => {
+                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                cpu.jmp(addr);
+            }
+
+            Opcode::DJNz => cpu.djnz(),
+            Opcode::ExAfAf => cpu.ex_af_altaf(),
+            Opcode::ExSPptrHL => cpu.ex_spptr_reg(RegisterCode16::HL),
+            Opcode::Exx => cpu.exx(),
+            Opcode::ExDEHL => cpu.ex_de_hl(),
+
+            Opcode::Ei => cpu.enable_intrpt(),
+            Opcode::Di => cpu.disable_intrpt(),
+
+            Opcode::Daa => cpu.daa(),
+
+            Opcode::Scf => cpu.scf(),
+            Opcode::Ccf => cpu.ccf(),
+
+            Opcode::CallLit => {
+                let addr = cpu.imm_addr_ex();
+                cpu.call_addr(addr);
+            }
+            Opcode::CallNz => {
+                let addr = cpu.imm_addr_ex();
+                cpu.call_cond_addr(addr, Flags::Zero, false);
+            }
+            Opcode::CallNc => {
+                let addr = cpu.imm_addr_ex();
+                cpu.call_cond_addr(addr, Flags::Carry, false);
+            }
+            Opcode::CallPo => {
+                let addr = cpu.imm_addr_ex();
+                cpu.call_cond_addr(addr, Flags::OverflowParity, false);
+            }
+            Opcode::CallP => {
+                let addr = cpu.imm_addr_ex();
+                cpu.call_cond_addr(addr, Flags::Sign, false);
+            }
+            Opcode::CallZ => {
+                let addr = cpu.imm_addr_ex();
+                cpu.call_cond_addr(addr, Flags::Zero, true);
+            }
+            Opcode::CallC => {
+                let addr = cpu.imm_addr_ex();
+                cpu.call_cond_addr(addr, Flags::Carry, true);
+            }
+            Opcode::CallPe => {
+                let addr = cpu.imm_addr_ex();
+                cpu.call_cond_addr(addr, Flags::OverflowParity, true);
+            }
+            Opcode::CallM => {
+                let addr = cpu.imm_addr_ex();
+                cpu.call_cond_addr(addr, Flags::Sign, true);
+            }
+
+            Opcode::Ret => cpu.ret(),
+            Opcode::RetNz => cpu.ret_cond(Flags::Zero, false),
+            Opcode::RetNc => cpu.ret_cond(Flags::Carry, false),
+            Opcode::RetPo => cpu.ret_cond(Flags::OverflowParity, false),
+            Opcode::RetP => cpu.ret_cond(Flags::Sign, false),
+            Opcode::RetZ => cpu.ret_cond(Flags::Zero, true),
+            Opcode::RetC => cpu.ret_cond(Flags::Carry, true),
+            Opcode::RetPe => cpu.ret_cond(Flags::OverflowParity, true),
+            Opcode::RetM => cpu.ret_cond(Flags::Sign, true),
+
+            Opcode::Halt => cpu.halt(),
+
             // Extended Opcodes
-            Opcode::Ix => panic!("Unimplemented!"),
-            Opcode::Iy => panic!("Unimplemented!"),
-            Opcode::Bits => panic!("Unimplemented!"),
-            Opcode::Extd => panic!("Unimplemented!"),
-            _ => panic!("Unimplemented!"),
+            Opcode::Ix => unimplemented!(),
+            Opcode::Iy => unimplemented!(),
+            Opcode::Bits => unimplemented!(),
+            Opcode::Extd => unimplemented!(),
+            _ => panic!("Unimplemented for Opcode {:?}!", opcode),
         }
     }
 
@@ -933,6 +1077,8 @@ impl Opcode {
             Opcode::JpCLit => String::from("Jmp c"),
             Opcode::JpPeLit => String::from("Jmp pe"),
             Opcode::JpMLit => String::from("Jmp m"),
+
+            Opcode::JrLit => String::from("Jr *"),
 
             // Extended Opcodes
             Opcode::Ix => panic!("Unimplemented!"),
