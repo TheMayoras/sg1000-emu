@@ -8,6 +8,8 @@ use std::mem;
 // 2). INC for main group
 // 3). Dec for main group
 
+mod bits;
+mod extended;
 mod opcode;
 
 // define registers
@@ -63,16 +65,15 @@ pub enum Flags {
 // NOTE: all addresses are byte based, so the program counter points to a byte
 pub struct Cpu {
     clock:                u64,
-    clock_queue:          u64,
+    clock_queue:          i64,
     read_write:           TriStateLogic,
     iff1:                 bool,
     iff2:                 bool,
     interrupt_count:      u8,
     reg:                  [u16; 8], // contains A, F, B, C, D, E, H, L
     alt_reg:              [u16; 8], // contains alternate A, F, B, C, D, E, H, L
-    spec_reg:             [u32; 6], // contains I, IX, IY, PC, SP, 
+    spec_reg:             [u32; 6], // contains I, R, IX, IY, PC, SP 
     buffer:               Vec<u8>,
-    stack:                Vec<u8>,
     halted:               bool,
 }
 
@@ -92,7 +93,6 @@ impl Cpu {
             alt_reg:              [0; 8],
             spec_reg:             [0; 6],
             buffer:               buf,
-            stack:                Vec::new(),
             halted:               false,
             interrupt_count:      0,
         }
@@ -144,7 +144,7 @@ impl Cpu {
         self.reg[reg_low as usize] = val & 0xFF;
     }
 
-    fn reg_value_16(&self, code: RegisterCode16) -> u16 {
+    pub fn reg_value_16(&self, code: RegisterCode16) -> u16 {
         let reg_high: RegisterCode;
         let reg_low: RegisterCode;
         match code {
@@ -189,15 +189,19 @@ impl Cpu {
     }
 
     pub fn tick_clock(&mut self, n: u64) {
+        self.flush_ticks();
         self.clock += n
     }
 
-    fn queue_clock_tick(&mut self, n: u64) {
+    fn queue_clock_tick(&mut self, n: i64) {
         self.clock_queue += n;
     }
 
     fn flush_ticks(&mut self) {
-        self.tick_clock(self.clock_queue);
+        if self.clock_queue == 0 {
+            return;
+        }
+        self.tick_clock(self.clock_queue as u64);
     }
 
     fn set_reg_value(&mut self, code: RegisterCode, value: u16) {
@@ -265,10 +269,23 @@ impl Cpu {
         byte
     }
 
+    fn parity_even(mut val: u32) -> bool {
+        let mut result = 0;
+        while val > 0 {
+            result ^= val & 1;
+            val >>= 1;
+        }
+
+        // Parity is even the result is 0
+        //   (e.g.) 101101 would be 1 xor 1 xor 1 xor 1
+        //          all 1's cancel out
+        result == 0
+    }
+
     /// Get the next byte from the current position of program counter.
     ///
     /// This function does not increment the program counter after retrieval
-    fn next_byte_no_inc(&self) -> u8 {
+    pub fn next_byte_no_inc(&self) -> u8 {
         let pc = self.get_pc();
 
         // get the byte at the given buffer
@@ -369,7 +386,7 @@ impl Cpu {
     ///
     /// This form of addressing uses the value stored in one the 16 bit
     /// registers pairs
-    fn reg_indirect_addr(&mut self, register: RegisterCode16) -> u16 {
+    fn indirect_reg_addr(&mut self, register: RegisterCode16) -> u16 {
         self.reg_value_16(register)
     }
 
@@ -385,10 +402,14 @@ impl Cpu {
     }
 }
 
-// Operations
+/* ==========================================================================
+ * ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^Addressing^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ * vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvOperationsvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+ * =========================================================================*/
 impl Cpu {
     /// No Op
     fn noop(&mut self) {
+        println!("No-Op");
         self.tick_clock(4);
     }
 
@@ -412,12 +433,10 @@ impl Cpu {
 
     /// load the dest reg with value pointed to by the address passed in
     fn ld_reg_addr(&mut self, dst: RegisterCode, addr: u16) {
-        use RegisterCode::*;
         let value = self.buffer[addr as usize];
 
         self.reg[dst as usize] = value as u16;
 
-        self.flush_ticks();
         self.tick_clock(7);
     }
 
@@ -425,14 +444,17 @@ impl Cpu {
         let value = self.reg[src as usize];
 
         self.buffer[addr as usize] = value as u8;
+        self.tick_clock(7);
     }
 
     fn ld_addr_lit(&mut self, addr: u16, lit: u8) {
         self.buffer[addr as usize] = lit;
+        self.tick_clock(10);
     }
 
     fn ld_reg16_lit(&mut self, reg: RegisterCode16, lit: u16) {
         self.set_reg_value_16(reg, lit);
+        self.tick_clock(10);
     }
 
     fn ld_reg16_addr(&mut self, dst: RegisterCode16, addr: u16) {
@@ -440,11 +462,13 @@ impl Cpu {
         let addr_high = self.fetch(addr + 1) as u16;
 
         self.set_reg_value_16(dst, (addr_high << 8) | addr_low);
+        self.tick_clock(16);
     }
 
     fn ld_reg16_reg16(&mut self, dst: RegisterCode16, src: RegisterCode16) {
         let val = self.reg_value_16(src);
         self.set_reg_value_16(dst, val);
+        self.tick_clock(6);
     }
 
     fn ld_addr_reg16(&mut self, addr: u16, src: RegisterCode16) {
@@ -452,6 +476,7 @@ impl Cpu {
 
         self.store(addr, (val & 0xFF) as u8);
         self.store(addr, ((val >> 8) & 0xFF) as u8);
+        self.tick_clock(16);
     }
 
     fn push_reg16(&mut self, src: RegisterCode16) {
@@ -460,6 +485,7 @@ impl Cpu {
         // high order byte is stored first
         self.push(((val >> 8) & 0xFF) as u8);
         self.push((val & 0xFF) as u8);
+        self.tick_clock(11);
     }
 
     fn pop_reg16(&mut self, dst: RegisterCode16) {
@@ -467,6 +493,7 @@ impl Cpu {
         val = (val << 8) | self.pop() as u16;
 
         self.set_reg_value_16(dst, val);
+        self.tick_clock(10);
     }
 
     /* ---------------------- Incrementing ----------------- */
@@ -485,6 +512,7 @@ impl Cpu {
         self.set_flag(Flags::Subtract, false);
 
         self.reg[reg as usize] = val;
+        self.tick_clock(4);
     }
 
     fn inc_addr(&mut self, addr: u16) {
@@ -502,6 +530,7 @@ impl Cpu {
         self.set_flag(Flags::Subtract, false);
 
         self.store(addr, val as u8);
+        self.tick_clock(11);
     }
 
     /// Increment a 16 bit register or register pair.  
@@ -513,6 +542,7 @@ impl Cpu {
         val %= 0xFFFF + 1;
 
         self.set_reg_value_16(reg, val as u16);
+        self.tick_clock(6);
     }
 
     /// Decrement the register by 1
@@ -536,6 +566,7 @@ impl Cpu {
         self.set_flag(Flags::Zero, val == 0);
 
         self.reg[reg as usize] = val;
+        self.tick_clock(4);
     }
 
     /// Decrement the register by 1
@@ -559,6 +590,7 @@ impl Cpu {
         self.set_flag(Flags::Zero, val == 0);
 
         self.store(addr, val);
+        self.tick_clock(11);
     }
 
     /// Decrement a 16 bit register or register pair.  
@@ -574,6 +606,7 @@ impl Cpu {
         }
 
         self.set_reg_value_16(reg, val as u16);
+        self.tick_clock(6);
     }
 
     /// Add 8 bit values
@@ -614,6 +647,7 @@ impl Cpu {
 
         let result = self.add_val_val(acc, operand);
         self.set_reg_value(RegisterCode::A, result);
+        self.tick_clock(4);
     }
 
     fn add_a_addr(&mut self, addr: u16) {
@@ -622,6 +656,7 @@ impl Cpu {
 
         let result = self.add_val_val(acc, operand);
         self.set_reg_value(RegisterCode::A, result);
+        self.tick_clock(7);
     }
 
     fn add_a_lit(&mut self, lit: u8) {
@@ -629,6 +664,7 @@ impl Cpu {
 
         let result = self.add_val_val(acc, lit as u16);
         self.set_reg_value(RegisterCode::A, result);
+        self.tick_clock(7);
     }
 
     /// Add the contents of the specified register to the accumlator register
@@ -639,6 +675,7 @@ impl Cpu {
 
         let result = self.add_val_val(acc + carry, operand);
         self.set_reg_value(RegisterCode::A, result);
+        self.tick_clock(4);
     }
 
     fn add_a_addr_carry(&mut self, addr: u16) {
@@ -648,6 +685,7 @@ impl Cpu {
 
         let result = self.add_val_val(acc + carry, operand);
         self.set_reg_value(RegisterCode::A, result);
+        self.tick_clock(7);
     }
 
     fn add_a_lit_carry(&mut self, lit: u8) {
@@ -656,6 +694,7 @@ impl Cpu {
 
         let result = self.add_val_val(acc + carry, lit as u16);
         self.set_reg_value(RegisterCode::A, result);
+        self.tick_clock(7);
     }
 
     fn add_reg16_reg16(&mut self, to: RegisterCode16, operand: RegisterCode16) {
@@ -671,6 +710,35 @@ impl Cpu {
         self.set_flag(Flags::HalfCarry, (add_to & 0xFFF) + (with & 0xFFF) > 0xFFF);
 
         self.set_reg_value_16(to, result as u16);
+        self.tick_clock(11);
+    }
+
+    fn sbc_reg16_reg16(&mut self, to: RegisterCode16, operand: RegisterCode16) {
+        let src = self.reg_value_16(to);
+        let op = self.reg_value_16(operand);
+        let carry = if self.flag(Flags::Carry) { 1 } else { 0 };
+
+        let result = if src >= op + carry {
+            self.set_flag(Flags::Carry, false);
+            src - op - carry
+        } else {
+            self.set_flag(Flags::Carry, true);
+            0xFFFF - op - carry + src + 1
+        };
+
+        self.set_flag(Flags::Sign, result >= 0x8000);
+        self.set_flag(Flags::Zero, result == 0);
+        // set the half flag if we are subtracting a larger number than is in the lower 3 nibbles
+        // of the operand + carry
+        self.set_flag(Flags::HalfCarry, src & 0xFFF < (op & 0xFFF) + carry);
+        self.set_flag(
+            Flags::OverflowParity,
+            src & 0x8000 != (op + carry) & 0x8000 && src & 0x8000 != result & 0x8000,
+        );
+        self.set_flag(Flags::Subtract, true);
+
+        self.set_reg_value_16(to, result);
+        self.tick_clock(15);
     }
 
     /// Subtract the value in the operand from the Accumulator
@@ -710,6 +778,7 @@ impl Cpu {
         let result = self.sub_val_val(acc, val, false);
 
         self.set_reg_value(RegisterCode::A, result);
+        self.tick_clock(4);
     }
 
     fn sub_a_addr(&mut self, addr: u16) {
@@ -718,6 +787,7 @@ impl Cpu {
 
         let result = self.sub_val_val(acc, operand, false);
         self.set_reg_value(RegisterCode::A, result);
+        self.tick_clock(7);
     }
 
     fn sub_a_lit(&mut self, lit: u8) {
@@ -725,6 +795,7 @@ impl Cpu {
 
         let result = self.sub_val_val(acc, lit as u16, false);
         self.set_reg_value(RegisterCode::A, result);
+        self.tick_clock(7);
     }
 
     fn sub_a_reg_carry(&mut self, reg: RegisterCode) {
@@ -734,6 +805,7 @@ impl Cpu {
         let result = self.sub_val_val(acc, val, self.flag(Flags::Carry));
 
         self.set_reg_value(RegisterCode::A, result);
+        self.tick_clock(4);
     }
 
     fn sub_a_addr_carry(&mut self, addr: u16) {
@@ -742,6 +814,7 @@ impl Cpu {
 
         let result = self.sub_val_val(acc, operand, self.flag(Flags::Carry));
         self.set_reg_value(RegisterCode::A, result);
+        self.tick_clock(7);
     }
 
     fn sub_a_lit_carry(&mut self, lit: u8) {
@@ -749,6 +822,7 @@ impl Cpu {
 
         let result = self.sub_val_val(acc, lit as u16, self.flag(Flags::Carry));
         self.set_reg_value(RegisterCode::A, result);
+        self.tick_clock(7);
     }
 
     fn and_val_val(&mut self, acc: u8, operand: u8) -> u8 {
@@ -775,6 +849,7 @@ impl Cpu {
         let acc = self.reg_value(RegisterCode::A);
 
         self.and_val_val(acc, val);
+        self.tick_clock(4);
     }
 
     fn and_a_addr(&mut self, addr: u16) {
@@ -782,12 +857,14 @@ impl Cpu {
         let acc = self.reg_value(RegisterCode::A);
 
         self.and_val_val(acc, val);
+        self.tick_clock(7);
     }
 
     fn and_a_lit(&mut self, val: u8) {
         let acc = self.reg_value(RegisterCode::A);
 
         self.and_val_val(acc, val);
+        self.tick_clock(7);
     }
 
     fn or_val_val(&mut self, acc: u8, operand: u8) -> u8 {
@@ -814,6 +891,7 @@ impl Cpu {
         let acc = self.reg_value(RegisterCode::A);
 
         self.or_val_val(acc, val);
+        self.tick_clock(4);
     }
 
     fn or_a_addr(&mut self, addr: u16) {
@@ -821,12 +899,14 @@ impl Cpu {
         let acc = self.reg_value(RegisterCode::A);
 
         self.or_val_val(acc, val);
+        self.tick_clock(7);
     }
 
     fn or_a_lit(&mut self, val: u8) {
         let acc = self.reg_value(RegisterCode::A);
 
         self.or_val_val(acc, val);
+        self.tick_clock(7);
     }
 
     fn xor_val_val(&mut self, acc: u8, operand: u8) -> u8 {
@@ -853,6 +933,7 @@ impl Cpu {
         let acc = self.reg_value(RegisterCode::A);
 
         self.xor_val_val(acc, val);
+        self.tick_clock(4);
     }
 
     fn xor_a_addr(&mut self, addr: u16) {
@@ -860,12 +941,14 @@ impl Cpu {
         let acc = self.reg_value(RegisterCode::A);
 
         self.xor_val_val(acc, val);
+        self.tick_clock(7);
     }
 
     fn xor_a_lit(&mut self, val: u8) {
         let acc = self.reg_value(RegisterCode::A);
 
         self.xor_val_val(acc, val);
+        self.tick_clock(7);
     }
 
     fn cp_a_val(&mut self, val: u8) -> bool {
@@ -885,39 +968,239 @@ impl Cpu {
         let val = self.reg_value(reg);
 
         self.cp_a_val(val);
+        self.tick_clock(4);
     }
 
     fn cp_a_addr(&mut self, addr: u16) {
         let val = self.fetch(addr);
 
         self.cp_a_val(val);
+        self.tick_clock(7);
     }
 
     fn cp_a_lit(&mut self, val: u8) {
         self.cp_a_val(val);
+        self.tick_clock(7);
+    }
+
+    fn rot_l_carry(&self, val: u8) -> (u8, bool) {
+        let carry = val >> 7;
+        let output = (val << 1) | carry;
+
+        (output, carry > 0)
+    }
+
+    fn rlc_reg(&mut self, src: RegisterCode) {
+        let val = self.reg_value(src);
+
+        let (output, carry) = self.rot_l_carry(val);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+        self.set_reg_value(src, output as u16);
+
+        self.tick_clock(8);
+    }
+
+    fn rlc_addr(&mut self, addr: u16) {
+        let val = self.fetch(addr);
+
+        let (output, carry) = self.rot_l_carry(val);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+        self.store(addr, output);
+
+        self.tick_clock(15);
     }
 
     fn rlca(&mut self) {
         let a = self.reg_value(RegisterCode::A);
-        let carry = a >> 7;
 
-        self.set_flag(Flags::Carry, carry > 0);
         self.set_flag(Flags::HalfCarry, false);
         self.set_flag(Flags::Subtract, false);
 
-        self.set_reg_value(RegisterCode::A, ((a << 1) | carry) as u16);
+        let (val, carry) = self.rot_l_carry(a);
+
+        self.set_flag(Flags::Carry, carry);
+        self.set_reg_value(RegisterCode::A, val as u16);
+        self.tick_clock(4);
+    }
+
+    fn rot_l(&self, val: u8) -> (u8, bool) {
+        let carry = if self.flag(Flags::Carry) { 1 } else { 0 };
+
+        let output = (val << 1) | carry;
+        let carry = val >> 7;
+
+        (output, carry > 0)
+    }
+
+    fn rl_reg(&mut self, src: RegisterCode) {
+        let reg = self.reg_value(src);
+        let (output, carry) = self.rot_l(reg);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+
+        self.set_reg_value(src, output as u16);
+        self.tick_clock(8);
+    }
+
+    fn rl_addr(&mut self, addr: u16) {
+        let val = self.fetch(addr);
+
+        let (output, carry) = self.rot_l(val);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+        self.store(addr, output);
+
+        self.tick_clock(15);
     }
 
     fn rla(&mut self) {
         let a = self.reg_value(RegisterCode::A);
-        let carry_out = a >> 7;
-        let carry_in = if self.flag(Flags::Carry) { 1 } else { 0 };
 
-        self.set_flag(Flags::Carry, carry_out > 0);
+        let (val, carry) = self.rot_l(a);
+
+        self.set_flag(Flags::Carry, carry);
         self.set_flag(Flags::HalfCarry, false);
         self.set_flag(Flags::Subtract, false);
 
-        self.set_reg_value(RegisterCode::A, ((a << 1) | carry_in) as u16);
+        self.set_reg_value(RegisterCode::A, val as u16);
+        self.tick_clock(4);
+    }
+
+    fn sl(&mut self, val: u8, bit1: u8) -> (u8, bool) {
+        let carry = val >> 7;
+        let output = (val << 1) | (bit1 & 1);
+
+        (output, carry > 0)
+    }
+
+    fn sla_reg(&mut self, src: RegisterCode) {
+        let reg = self.reg_value(src);
+        let (output, carry) = self.sl(reg, 0);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+
+        self.set_reg_value(src, output as u16);
+        self.tick_clock(8);
+    }
+
+    fn sla_addr(&mut self, addr: u16) {
+        let val = self.fetch(addr);
+        let (output, carry) = self.sl(val, 0);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+
+        self.store(addr, output);
+        self.tick_clock(15);
+    }
+
+    fn sll_reg(&mut self, src: RegisterCode) {
+        let reg = self.reg_value(src);
+        let (output, carry) = self.sl(reg, 1);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+
+        self.set_reg_value(src, output as u16);
+        self.tick_clock(8);
+    }
+
+    fn sll_addr(&mut self, addr: u16) {
+        let val = self.fetch(addr);
+        let (output, carry) = self.sl(val, 1);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+
+        self.store(addr, output);
+        self.tick_clock(15);
+    }
+
+    fn rot_r_carry(&self, val: u8) -> (u8, bool) {
+        let carry = val & 1;
+        let output = (carry << 7) | (val >> 1);
+
+        (output, carry > 0)
+    }
+
+    fn rrc_reg(&mut self, src: RegisterCode) {
+        let reg = self.reg_value(src);
+        let (output, carry) = self.rot_r_carry(reg);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+
+        self.set_reg_value(src, output as u16);
+        self.tick_clock(8);
+    }
+
+    fn rrc_addr(&mut self, addr: u16) {
+        let val = self.fetch(addr);
+
+        let (output, carry) = self.rot_r_carry(val);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+        self.store(addr, output);
+
+        self.tick_clock(15);
     }
 
     fn rrca(&mut self) {
@@ -929,6 +1212,48 @@ impl Cpu {
         self.set_flag(Flags::Subtract, false);
 
         self.set_reg_value(RegisterCode::A, ((a >> 1) | (carry << 7)) as u16);
+        self.tick_clock(4);
+    }
+
+    fn rot_r(&self, val: u8) -> (u8, bool) {
+        let carry = if self.flag(Flags::Carry) { 1 } else { 0 };
+        let output = (carry << 7) | (val >> 1);
+        let carry = val & 1;
+
+        (output, carry > 0)
+    }
+
+    fn rr_reg(&mut self, src: RegisterCode) {
+        let reg = self.reg_value(src);
+        let (output, carry) = self.rot_r(reg);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+
+        self.set_reg_value(src, output as u16);
+        self.tick_clock(8);
+    }
+
+    fn rr_addr(&mut self, addr: u16) {
+        let val = self.fetch(addr);
+
+        let (output, carry) = self.rot_r(val);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+        self.store(addr, output);
+
+        self.tick_clock(15);
     }
 
     fn rra(&mut self) {
@@ -941,12 +1266,92 @@ impl Cpu {
         self.set_flag(Flags::Subtract, false);
 
         self.set_reg_value(RegisterCode::A, ((a >> 1) | (carry_out << 7)) as u16);
+        self.tick_clock(4);
+    }
+
+    fn sr(&self, val: u8, retain_bit7: bool) -> (u8, bool) {
+        let bit7 = if retain_bit7 { (val >> 7) & 1 } else { 0 };
+        let output = (bit7 << 7) | (val >> 1);
+        let carry = val & 1;
+
+        (output, carry > 0)
+    }
+
+    fn sra_reg(&mut self, src: RegisterCode) {
+        let reg = self.reg_value(src);
+        let (output, carry) = self.sr(reg, true);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+
+        self.set_reg_value(src, output as u16);
+        self.tick_clock(8);
+    }
+
+    fn sra_addr(&mut self, addr: u16) {
+        let val = self.fetch(addr);
+        let (output, carry) = self.sr(val, true);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+
+        self.store(addr, output);
+        self.tick_clock(15);
+    }
+
+    fn srl_reg(&mut self, src: RegisterCode) {
+        let reg = self.reg_value(src);
+        let (output, carry) = self.sr(reg, false);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+
+        self.set_reg_value(src, output as u16);
+        self.tick_clock(8);
+    }
+
+    fn srl_addr(&mut self, addr: u16) {
+        let val = self.fetch(addr);
+        let (output, carry) = self.sr(val, false);
+
+        self.set_flag(Flags::Sign, output >= 0x80);
+        self.set_flag(Flags::Zero, output == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(output as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_flag(Flags::Carry, carry);
+
+        self.store(addr, output);
+        self.tick_clock(15);
     }
 
     /* ============================ JUMP INSTRUCTIONS ============================= */
     /// Jump to the specified address
     fn jmp(&mut self, addr: u16) {
         self.set_reg_value_16(RegisterCode16::PC, addr);
+        self.tick_clock(10);
+    }
+
+    fn jmp_addr(&mut self, src: RegisterCode16) {
+        let addr = self.reg_value_16(src);
+        self.set_reg_value_16(RegisterCode16::PC, addr);
+        self.tick_clock(4);
     }
 
     /// Jump to the offset specified by the next byte
@@ -954,23 +1359,30 @@ impl Cpu {
         let addr = self.rel_addr();
 
         self.set_reg_value_16(RegisterCode16::PC, addr);
+        self.tick_clock(12);
     }
 
     /// Execute a jump to the specified address if the flag matches the condition passed in
     fn jmp_cond(&mut self, addr: u16, flag: Flags, is_set: bool) {
         if self.flag(flag) == is_set {
             self.jmp(addr);
+            self.tick_clock(12);
+        } else {
+            self.tick_clock(7);
         }
     }
 
     fn djnz(&mut self) {
+        let addr = self.rel_addr();
         let mut b = self.reg_value(RegisterCode::B);
         b -= 1;
         self.set_reg_value(RegisterCode::B, b as u16);
 
         if b > 0 {
-            let addr = self.rel_addr();
             self.set_reg_value_16(RegisterCode16::PC, addr);
+            self.tick_clock(13);
+        } else {
+            self.tick_clock(8);
         }
     }
 
@@ -979,6 +1391,8 @@ impl Cpu {
             .swap(RegisterCode::D as usize, RegisterCode::H as usize);
         self.reg
             .swap(RegisterCode::E as usize, RegisterCode::L as usize);
+
+        self.tick_clock(4);
     }
 
     fn ex_af_altaf(&mut self) {
@@ -991,6 +1405,8 @@ impl Cpu {
             &mut self.reg[RegisterCode::Flags as usize],
             &mut self.alt_reg[RegisterCode::Flags as usize],
         );
+
+        self.tick_clock(4);
     }
 
     fn exx(&mut self) {
@@ -1000,6 +1416,8 @@ impl Cpu {
             .for_each(|(r, ar)| {
                 mem::swap(r, ar);
             });
+
+        self.tick_clock(4);
     }
 
     fn ex_spptr_reg(&mut self, reg_code: RegisterCode16) {
@@ -1028,6 +1446,8 @@ impl Cpu {
         }
         self.store(sp, fetched_low as u8);
         self.store(sp + 1, fetched_high as u8);
+
+        self.tick_clock(19);
     }
 
     /// This instruction conditionally adjusts the Accumulator for BCD addition and
@@ -1073,6 +1493,8 @@ impl Cpu {
         }
 
         self.set_flag(Flags::OverflowParity, parity > 0);
+
+        self.tick_clock(4);
     }
 
     fn cpl(&mut self) {
@@ -1082,33 +1504,45 @@ impl Cpu {
 
         self.set_flag(Flags::HalfCarry, true);
         self.set_flag(Flags::Subtract, true);
+
+        self.tick_clock(4);
     }
 
     fn ccf(&mut self) {
         self.set_flag(Flags::HalfCarry, self.flag(Flags::Carry));
         self.set_flag(Flags::Subtract, false);
         self.set_flag(Flags::Carry, !self.flag(Flags::Carry));
+
+        self.tick_clock(4);
     }
 
     fn scf(&mut self) {
         self.set_flag(Flags::HalfCarry, false);
         self.set_flag(Flags::Subtract, false);
         self.set_flag(Flags::Sign, true);
+
+        self.tick_clock(4);
     }
 
     fn halt(&mut self) {
         self.halted = true;
+
+        self.tick_clock(4);
     }
 
     fn disable_intrpt(&mut self) {
         self.iff2 = false;
         self.iff1 = false;
+
+        self.tick_clock(4);
     }
 
     fn enable_intrpt(&mut self) {
         self.iff2 = true;
         self.iff1 = true;
         self.interrupt_count = 1;
+
+        self.tick_clock(4);
     }
 
     /* ====================== CALL and RET ============================= */
@@ -1116,15 +1550,19 @@ impl Cpu {
     fn call_addr(&mut self, addr: u16) {
         self.push_pc();
         self.set_reg_value_16(RegisterCode16::PC, addr);
+
+        self.tick_clock(17);
     }
 
     fn call_cond_addr(&mut self, addr: u16, flag: Flags, is_set: bool) {
         if self.flag(flag) != is_set {
+            self.tick_clock(10);
             return;
         }
 
         self.push_pc();
         self.set_reg_value_16(RegisterCode16::PC, addr);
+        self.tick_clock(17);
     }
 
     fn ret(&mut self) {
@@ -1132,10 +1570,13 @@ impl Cpu {
         let high = self.pop() as u16;
 
         self.set_reg_value_16(RegisterCode16::PC, (high << 8) | low);
+
+        self.tick_clock(10);
     }
 
     fn ret_cond(&mut self, flag: Flags, is_set: bool) {
         if self.flag(flag) != is_set {
+            self.tick_clock(5);
             return;
         }
 
@@ -1143,6 +1584,7 @@ impl Cpu {
         let high = self.pop() as u16;
 
         self.set_reg_value_16(RegisterCode16::PC, (high << 8) | low);
+        self.tick_clock(11);
     }
 
     fn rst_lit(&mut self, offset: u8) {
@@ -1151,6 +1593,63 @@ impl Cpu {
         self.push_pc();
 
         self.set_reg_value_16(RegisterCode16::PC, offset);
+        self.tick_clock(11);
+    }
+
+    fn test_bit_val(val: u8, bit: u8) -> bool {
+        (val >> bit) & 1 > 0
+    }
+
+    fn test_bit_reg(&mut self, src: RegisterCode, bit: u8) {
+        let reg = self.reg_value(src);
+        let is_set = Cpu::test_bit_val(reg, bit);
+
+        self.set_flag(Flags::Zero, !is_set);
+        self.set_flag(Flags::HalfCarry, true);
+        self.set_flag(Flags::Subtract, false);
+        self.tick_clock(8);
+    }
+
+    fn test_bit_addr(&mut self, addr: u16, bit: u8) {
+        let val = self.fetch(addr);
+        let is_set = Cpu::test_bit_val(val, bit);
+
+        self.set_flag(Flags::Zero, !is_set);
+        self.set_flag(Flags::HalfCarry, true);
+        self.set_flag(Flags::Subtract, false);
+        self.tick_clock(12);
+    }
+
+    fn res_bit(val: u8, bit: u8) -> u8 {
+        val & !(1 << bit)
+    }
+
+    fn set_bit(val: u8, bit: u8) -> u8 {
+        val | (1 << bit)
+    }
+
+    fn change_bit_reg(&mut self, src: RegisterCode, bit: u8, set: bool) {
+        let val = self.reg_value(src);
+        let output = if set {
+            Cpu::set_bit(val, bit)
+        } else {
+            Cpu::res_bit(val, bit)
+        };
+
+        self.set_reg_value(src, output as u16);
+        self.tick_clock(8);
+    }
+
+    fn change_bit_addr(&mut self, addr: u16, bit: u8, set: bool) {
+        let val = self.fetch(addr);
+        let output = if set {
+            Cpu::set_bit(val, bit)
+        } else {
+            Cpu::res_bit(val, bit)
+        };
+
+        self.store(addr, output);
+        self.tick_clock(15);
     }
 }
 
@@ -1175,7 +1674,7 @@ mod tests {
         let mut cpu = Cpu::new(Vec::new());
         assert_eq!(0, cpu.clock());
 
-        cpu.tick_clock();
+        cpu.tick_clock(1);
         assert_eq!(1, cpu.clock());
 
         cpu.tick_clock(5);
@@ -1262,12 +1761,12 @@ mod tests {
     }
 
     #[test]
-    fn test_reg_indirect_addr() {
+    fn test_indirect_reg_addr() {
         let mut cpu = get_cpu();
         cpu.set_reg_value(RegisterCode::H, 0xab);
         cpu.set_reg_value(RegisterCode::L, 0xcd);
 
-        assert_eq!(0xabcd, cpu.reg_indirect_addr(RegisterCode16::HL));
+        assert_eq!(0xabcd, cpu.indirect_reg_addr(RegisterCode16::HL));
     }
 
     #[test]
@@ -1346,7 +1845,7 @@ mod tests {
         // test normal dec
         cpu.set_reg_value(RegisterCode::A, 1);
         cpu.dec_reg(RegisterCode::A);
-        assert_eq!(0, cpu.reg[RegisterCode::A as usize]);
+        assert_eq!(0, cpu.reg_value(RegisterCode::A));
         assert_eq!(false, cpu.flag(Flags::OverflowParity));
         assert_eq!(true, cpu.flag(Flags::Zero));
         assert_eq!(false, cpu.flag(Flags::Sign));
@@ -1356,7 +1855,7 @@ mod tests {
         // test wrap around
         cpu.set_reg_value(RegisterCode::A, 0);
         cpu.dec_reg(RegisterCode::A);
-        assert_eq!(0xFF, cpu.reg[RegisterCode::A as usize]);
+        assert_eq!(0xFF, cpu.reg_value(RegisterCode::A));
         assert_eq!(false, cpu.flag(Flags::OverflowParity));
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(true, cpu.flag(Flags::Sign));
@@ -1366,7 +1865,7 @@ mod tests {
         // test wrap around
         cpu.set_reg_value(RegisterCode::A, 0x80);
         cpu.dec_reg(RegisterCode::A);
-        assert_eq!(0x7F, cpu.reg[RegisterCode::A as usize]);
+        assert_eq!(0x7F, cpu.reg_value(RegisterCode::A));
         assert_eq!(true, cpu.flag(Flags::OverflowParity));
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(false, cpu.flag(Flags::Sign));
@@ -1376,7 +1875,7 @@ mod tests {
         // test half adder
         cpu.set_reg_value(RegisterCode::A, 0b1011_0000);
         cpu.dec_reg(RegisterCode::A);
-        assert_eq!(0b1010_1111, cpu.reg[RegisterCode::A as usize]);
+        assert_eq!(0b1010_1111, cpu.reg_value(RegisterCode::A));
         assert_eq!(false, cpu.flag(Flags::OverflowParity));
         assert_eq!(false, cpu.flag(Flags::Zero));
         assert_eq!(true, cpu.flag(Flags::Sign));
@@ -1451,34 +1950,9 @@ mod tests {
     }
 
     #[test]
-    fn test_sub_val_val_carry() {
+    fn test_sbc_reg16_reg16() {
         let mut cpu = get_cpu();
 
-        let result = cpu.sub_val_val(127, 0xC0, true);
-        assert_eq!(191 - 1, result);
-        assert_eq!(true, cpu.flag(Flags::OverflowParity));
-
-        let result = cpu.sub_val_val(127, 5, true);
-        assert_eq!(121, result);
-        assert_eq!(false, cpu.flag(Flags::OverflowParity));
-
-        let result = cpu.sub_val_val(1, 0xFF, true);
-        assert_eq!(1, result);
-        assert_eq!(false, cpu.flag(Flags::OverflowParity));
-    }
-
-    #[test]
-    fn test_exx() {
-        let mut cpu = get_cpu();
-
-        cpu.set_reg_value(RegisterCode::B, 10);
-        cpu.set_reg_value(RegisterCode::A, 20);
-        cpu.exx();
-        assert_eq!(0, cpu.reg_value(RegisterCode::B));
-        assert_eq!(20, cpu.reg_value(RegisterCode::A));
-
-        cpu.exx();
-        assert_eq!(10, cpu.reg_value(RegisterCode::B));
-        assert_eq!(20, cpu.reg_value(RegisterCode::A));
+        cpu.set_flag(Flags::Carry, true);
     }
 }

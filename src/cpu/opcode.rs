@@ -1,11 +1,6 @@
 extern crate num;
 
-use super::Cpu;
-use super::RegisterCode;
-use super::RegisterCode16;
-use std::collections::HashMap;
-
-pub type OpcodeMap = HashMap<u8, Opcode>;
+use super::{bits::BitsOpcode, extended::Extnd, Cpu, RegisterCode, RegisterCode16};
 
 #[repr(u8)]
 #[derive(FromPrimitive, Debug, Copy, Clone, PartialEq, Eq)]
@@ -201,6 +196,12 @@ pub enum Opcode {
 
     // ADD Acc, Literal
     AdcALit = 0xCE,
+
+    // 16 bit Add
+    AddHLBC = 0x09,
+    AddHLDE = 0x19,
+    AddHLHL = 0x29,
+    AddHLSP = 0x39,
 
     // Sub Acc, Reg
     SubAB = 0x90,
@@ -430,76 +431,76 @@ impl Opcode {
 
             // Load Reg, (16 Bit Pair)
             Opcode::LdBHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.ld_reg_addr(RegisterCode::B, addr)
             }
             Opcode::LdDHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.ld_reg_addr(RegisterCode::D, addr)
             }
             Opcode::LdHHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.ld_reg_addr(RegisterCode::H, addr)
             }
             Opcode::LdCHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.ld_reg_addr(RegisterCode::C, addr)
             }
             Opcode::LdEHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.ld_reg_addr(RegisterCode::E, addr)
             }
             Opcode::LdLHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.ld_reg_addr(RegisterCode::L, addr)
             }
             Opcode::LdAHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.ld_reg_addr(RegisterCode::A, addr)
             }
             Opcode::LdABCptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::BC);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::BC);
                 cpu.ld_reg_addr(RegisterCode::A, addr)
             }
             Opcode::LdADEptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::DE);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::DE);
                 cpu.ld_reg_addr(RegisterCode::A, addr)
             }
 
             // Load (HL), Reg
             Opcode::LdHLptrB => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.ld_addr_reg(addr, RegisterCode::B);
             }
             Opcode::LdHLptrC => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.ld_addr_reg(addr, RegisterCode::C);
             }
             Opcode::LdHLptrD => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.ld_addr_reg(addr, RegisterCode::D);
             }
             Opcode::LdHLptrE => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.ld_addr_reg(addr, RegisterCode::E);
             }
             Opcode::LdHLptrH => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.ld_addr_reg(addr, RegisterCode::H);
             }
             Opcode::LdHLptrL => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.ld_addr_reg(addr, RegisterCode::L);
             }
             Opcode::LdHLptrA => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.ld_addr_reg(addr, RegisterCode::A);
             }
 
             // Ld (HL), literal
             Opcode::LdHlptrLit => {
                 let val = cpu.imm_addr();
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.ld_addr_lit(addr, val);
             }
 
@@ -558,7 +559,7 @@ impl Opcode {
             Opcode::IncA => cpu.inc_reg(RegisterCode::A),
 
             Opcode::IncHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.inc_addr(addr);
             }
 
@@ -576,7 +577,7 @@ impl Opcode {
             Opcode::DecA => cpu.dec_reg(RegisterCode::A),
 
             Opcode::DecHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.dec_addr(addr);
             }
 
@@ -593,7 +594,7 @@ impl Opcode {
             Opcode::AddAL => cpu.add_a_reg(RegisterCode::L),
             Opcode::AddAA => cpu.add_a_reg(RegisterCode::A),
             Opcode::AddAHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.add_a_addr(addr);
             }
 
@@ -611,13 +612,19 @@ impl Opcode {
             Opcode::AdcAL => cpu.add_a_reg_carry(RegisterCode::L),
             Opcode::AdcAA => cpu.add_a_reg_carry(RegisterCode::A),
             Opcode::AdcAHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.add_a_addr_carry(addr);
             }
             Opcode::AdcALit => {
                 let val = cpu.imm_addr();
                 cpu.add_a_lit_carry(val);
             }
+
+            Opcode::AddHLBC => cpu.add_reg16_reg16(RegisterCode16::HL, RegisterCode16::BC),
+            Opcode::AddHLDE => cpu.add_reg16_reg16(RegisterCode16::HL, RegisterCode16::DE),
+            Opcode::AddHLHL => cpu.add_reg16_reg16(RegisterCode16::HL, RegisterCode16::HL),
+            Opcode::AddHLSP => cpu.add_reg16_reg16(RegisterCode16::HL, RegisterCode16::SP),
+
             Opcode::SubAB => cpu.sub_a_reg(RegisterCode::B),
             Opcode::SubAC => cpu.sub_a_reg(RegisterCode::C),
             Opcode::SubAD => cpu.sub_a_reg(RegisterCode::D),
@@ -626,7 +633,7 @@ impl Opcode {
             Opcode::SubAL => cpu.sub_a_reg(RegisterCode::L),
             Opcode::SubAA => cpu.sub_a_reg(RegisterCode::A),
             Opcode::SubAHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.sub_a_addr(addr);
             }
 
@@ -643,7 +650,7 @@ impl Opcode {
             Opcode::SubcAL => cpu.sub_a_reg_carry(RegisterCode::L),
             Opcode::SubcAA => cpu.sub_a_reg_carry(RegisterCode::A),
             Opcode::SubcAHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.sub_a_addr_carry(addr);
             }
             Opcode::SubcALit => {
@@ -658,7 +665,7 @@ impl Opcode {
             Opcode::AndAL => cpu.and_a_reg(RegisterCode::L),
             Opcode::AndAA => cpu.and_a_reg(RegisterCode::A),
             Opcode::AndAHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.and_a_addr(addr);
             }
             Opcode::AndALit => {
@@ -674,7 +681,7 @@ impl Opcode {
             Opcode::OrAL => cpu.or_a_reg(RegisterCode::L),
             Opcode::OrAA => cpu.or_a_reg(RegisterCode::A),
             Opcode::OrAHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.or_a_addr(addr);
             }
             Opcode::OrALit => {
@@ -690,7 +697,7 @@ impl Opcode {
             Opcode::XorAL => cpu.xor_a_reg(RegisterCode::L),
             Opcode::XorAA => cpu.xor_a_reg(RegisterCode::A),
             Opcode::XorAHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.xor_a_addr(addr);
             }
             Opcode::XorALit => {
@@ -706,7 +713,7 @@ impl Opcode {
             Opcode::CpAL => cpu.cp_a_reg(RegisterCode::L),
             Opcode::CpAA => cpu.cp_a_reg(RegisterCode::A),
             Opcode::CpAHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.cp_a_addr(addr);
             }
             Opcode::CpALit => {
@@ -777,7 +784,7 @@ impl Opcode {
                 cpu.jmp_cond(addr, Flags::Zero, false);
             }
             Opcode::JpHLptr => {
-                let addr = cpu.reg_indirect_addr(RegisterCode16::HL);
+                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
                 cpu.jmp(addr);
             }
 
@@ -847,8 +854,14 @@ impl Opcode {
             // Extended Opcodes
             Opcode::Ix => unimplemented!(),
             Opcode::Iy => unimplemented!(),
-            Opcode::Bits => unimplemented!(),
-            Opcode::Extd => unimplemented!(),
+            Opcode::Bits => {
+                let bits_opcode = cpu.imm_addr();
+                BitsOpcode::operate_u8(cpu, bits_opcode);
+            }
+            Opcode::Extd => {
+                let extd_opcode = cpu.imm_addr();
+                Extnd::operate_u8(cpu, extd_opcode);
+            }
             _ => panic!("Unimplemented for Opcode {:?}!", opcode),
         }
     }
