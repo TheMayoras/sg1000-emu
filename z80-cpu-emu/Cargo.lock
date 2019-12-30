@@ -6,6 +6,10 @@ version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "bus"
+version = "0.1.0"
+
+[[package]]
 name = "num"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -120,6 +124,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "z80-cpu-emu"
 version = "0.1.0"
 dependencies = [
+ "bus 0.1.0",
  "num 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-traits 0.2.10 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -1,5 +1,7 @@
 #![allow(dead_code)]
+extern crate bus;
 
+use bus::bus::Bus;
 use opcode::Opcode;
 use std::mem;
 
@@ -73,16 +75,14 @@ pub struct Cpu {
     reg:                  [u16; 8], // contains A, F, B, C, D, E, H, L
     alt_reg:              [u16; 8], // contains alternate A, F, B, C, D, E, H, L
     spec_reg:             [u32; 6], // contains I, R, IX, IY, PC, SP 
-    buffer:               Vec<u8>,
     halted:               bool,
+    data_bus:             Bus,
 }
 
 impl Cpu {
     #[rustfmt::skip]
     /// TODO: set buffer to point to a vector of binary file data 
-    pub fn new(buf: Vec<u8>) -> Cpu {
-        let mut buf = buf;
-        buf.resize(256*256, 0);
+    pub fn new(buf: Bus) -> Cpu {
         Cpu {
             clock:                0,
             clock_queue:          0,
@@ -92,9 +92,9 @@ impl Cpu {
             reg:                  [0; 8],
             alt_reg:              [0; 8],
             spec_reg:             [0; 6],
-            buffer:               buf,
             halted:               false,
             interrupt_count:      0,
+            data_bus:             buf,
         }
     }
 
@@ -248,11 +248,11 @@ impl Cpu {
     fn pop_pc(&mut self) {}
 
     fn fetch(&self, addr: u16) -> u8 {
-        self.buffer[addr as usize]
+        self.data_bus.cpu_read(addr).unwrap()
     }
 
     fn store(&mut self, addr: u16, val: u8) {
-        self.buffer[addr as usize] = val;
+        self.data_bus.cpu_write(addr, val);
     }
 }
 
@@ -433,7 +433,7 @@ impl Cpu {
 
     /// load the dest reg with value pointed to by the address passed in
     fn ld_reg_addr(&mut self, dst: RegisterCode, addr: u16) {
-        let value = self.buffer[addr as usize];
+        let value = self.fetch(addr);
 
         self.reg[dst as usize] = value as u16;
 
@@ -443,12 +443,12 @@ impl Cpu {
     fn ld_addr_reg(&mut self, addr: u16, src: RegisterCode) {
         let value = self.reg[src as usize];
 
-        self.buffer[addr as usize] = value as u8;
+        self.store(addr, value as u8);
         self.tick_clock(7);
     }
 
     fn ld_addr_lit(&mut self, addr: u16, lit: u8) {
-        self.buffer[addr as usize] = lit;
+        self.store(addr, lit);
         self.tick_clock(10);
     }
 
@@ -1665,13 +1665,14 @@ impl Cpu {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[inline]
     fn get_cpu() -> Cpu {
-        Cpu::new(vec![0xab, 0xcd, 0xef])
+        Cpu::new(Bus::new(vec![Box::new(vec![0xab, 0xcd, 0xef])]))
     }
 
     #[test]
     fn test_inc_clock() {
-        let mut cpu = Cpu::new(Vec::new());
+        let mut cpu = Cpu::new(Bus::default());
         assert_eq!(0, cpu.clock());
 
         cpu.tick_clock(1);
@@ -1683,7 +1684,7 @@ mod tests {
 
     #[test]
     fn test_read_write() {
-        let mut cpu = Cpu::new(Vec::new());
+        let mut cpu = Cpu::new(Bus::default());
         assert_eq!(TriStateLogic::Disconnect, cpu.read_write());
 
         cpu.set_read_write(TriStateLogic::On);
@@ -1692,14 +1693,14 @@ mod tests {
 
     #[test]
     fn test_set_reg_a() {
-        let mut cpu = Cpu::new(Vec::new());
+        let mut cpu = Cpu::new(Bus::default());
         cpu.set_reg_value(RegisterCode::A, 10);
         assert_eq!(10, cpu.reg_value(RegisterCode::A));
     }
 
     #[test]
     fn test_register_16() {
-        let mut cpu = Cpu::new(Vec::new());
+        let mut cpu = Cpu::new(Bus::default());
         cpu.set_reg_value(RegisterCode::B, 0xBB);
         cpu.set_reg_value(RegisterCode::C, 0xCC);
         assert_eq!(0xBBCC, cpu.reg_value_16(RegisterCode16::BC));
@@ -1707,7 +1708,7 @@ mod tests {
 
     #[test]
     fn test_immediate_addressing() {
-        let mut cpu = Cpu::new(vec![0xab, 0xbc, 0xde]);
+        let mut cpu = Cpu::new(Bus::new(vec![Box::new(vec![0xab, 0xbc, 0xde])]));
 
         assert_eq!(0xab, cpu.imm_addr());
     }
@@ -1715,14 +1716,14 @@ mod tests {
     #[test]
     // note that this uses two bytes and we are in little endian order
     fn test_immediate_extended_addressing() {
-        let mut cpu = Cpu::new(vec![0xab, 0xcd, 0xef]);
+        let mut cpu = Cpu::new(Bus::new(vec![Box::new(vec![0xab, 0xcd, 0xef])]));
 
         assert_eq!(0xcdab, cpu.imm_addr_ex());
     }
 
     #[test]
     fn test_relative_addressing() {
-        let mut cpu = Cpu::new(vec![0xff, 0xff, 0]);
+        let mut cpu = Cpu::new(Bus::new(vec![Box::new(vec![0xff, 0xff, 0])]));
         assert_eq!(0, cpu.rel_addr());
 
         let pc = cpu.get_pc() as i16;
@@ -1738,7 +1739,7 @@ mod tests {
             vec[i] = (i % 0xff) as u8;
         }
 
-        let mut cpu = Cpu::new(vec);
+        let mut cpu = Cpu::new(Bus::new(vec![Box::new(vec)]));
         // we have vec[0, 1, 2, 3, 4, ..., 0xff, 0, 1, 2, 3, 4]
         cpu.set_pc(0xf0); // 0xf0 = 240 or 0xf0 = -16
         assert_eq!(0xf1 - 16, cpu.rel_addr());
