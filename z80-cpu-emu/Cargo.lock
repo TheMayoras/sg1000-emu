@@ -102,16 +102,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sg-1000-emu"
-version = "0.1.0"
-dependencies = [
- "num 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "num-derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "num-traits 0.2.10 (registry+https://github.com/rust-lang/crates.io-index)",
- "z80-cpu-emu 0.1.0",
-]
-
-[[package]]
 name = "syn"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -2,8 +2,8 @@
 #[deny(missing_docs)]
 extern crate num_derive;
 
-mod bus;
-mod cpu;
+pub mod bus;
+pub mod cpu;
 
 #[cfg(test)]
 mod tests {
