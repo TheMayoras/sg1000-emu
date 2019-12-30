@@ -1,13 +1,9 @@
 [package]
-name = "z80-cpu-emu"
+name = "bus"
 version = "0.1.0"
-authors = ["themayoras <ben.mayoras@gmail.com>"]
+authors = ["TheMayoras <ben.mayoras@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-num = "0.2"
-num-derive = "0.3"
-num-traits = "0.2"
-bus = { path = "../bus" }
