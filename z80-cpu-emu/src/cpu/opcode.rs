@@ -272,7 +272,7 @@ pub enum Opcode {
     // Xor A, Lit
     XorALit = 0xEE,
 
-    // Xor A, reg
+    // cp A, reg
     CpAB = 0xB8,
     CpAC,
     CpAD,

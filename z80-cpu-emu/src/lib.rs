@@ -3,8 +3,6 @@
 extern crate num_derive;
 extern crate bus;
 
-use bus::bus::*;
-
 pub mod cpu;
 
 #[cfg(test)]
@@ -107,5 +105,23 @@ mod tests {
         }
 
         assert_eq!(6, cpu.reg_value_16(RegisterCode16::HL));
+    }
+
+    #[test]
+    fn test_cpu_call_ret() {
+        let buf = vec![
+            0x18, 0x0E, 0xB8, 0xC8, 0x38, 0x03, 0x90, 0x18, 0xF9, 0x4F, 0x78, 0x91, 0x47, 0x79,
+            0x18, 0xF2, 0x3E, 0x1B, 0x06, 0x90, 0xCD, 0x02, 0x00, 0x06, 0x90,
+        ];
+
+        println!("Buf: {:?}", buf);
+
+        let mut cpu = Cpu::new(bus::bus::Bus::new(vec![Box::new(buf)]));
+
+        while cpu.next_byte_no_inc() != 0 {
+            cpu.do_operation();
+        }
+
+        assert_eq!(9, cpu.reg_value(RegisterCode::A));
     }
 }

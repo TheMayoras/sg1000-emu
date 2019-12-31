@@ -12,7 +12,7 @@ use std::mem;
 
 mod bits;
 mod extended;
-mod opcode;
+pub mod opcode;
 
 // define registers
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -218,11 +218,13 @@ impl Cpu {
     ///
     /// This function decrements the stack pointer and pushes the value onto the stack
     fn push(&mut self, value: u8) {
-        let mut pc = self.reg_value_16(RegisterCode16::SP);
-        pc += 1;
-        self.set_reg_value_16(RegisterCode16::SP, pc);
+        let mut sp = self.reg_value_16(RegisterCode16::SP);
 
-        self.store(pc, value);
+        sp = if sp == 0 { 0xFFFF } else { sp - 1 };
+
+        self.set_reg_value_16(RegisterCode16::SP, sp);
+
+        self.store(sp, value);
     }
 
     /// Pop the value off the stack
@@ -231,7 +233,7 @@ impl Cpu {
     fn pop(&mut self) -> u8 {
         let val = self.fetch(self.reg_value_16(RegisterCode16::SP));
         let mut pc = self.reg_value_16(RegisterCode16::SP);
-        pc -= 1;
+        pc = ((pc as u32 + 1) % 0xFFFF) as u16;
         self.set_reg_value_16(RegisterCode16::SP, pc);
 
         val
@@ -397,7 +399,9 @@ impl Cpu {
     /// This function will handle changing all internal Cpu values and will write to
     /// any necessary busses
     pub fn do_operation(&mut self) {
+        print!("PC: {}  |  ", self.reg_value_16(RegisterCode16::PC));
         let opcode = self.next_byte();
+        println!("Byte 0x{:x}", opcode);
         Opcode::operate_u8(self, opcode);
     }
 }
@@ -953,15 +957,18 @@ impl Cpu {
 
     fn cp_a_val(&mut self, val: u8) -> bool {
         let a = self.reg_value(RegisterCode::A);
-        let result = a == val;
+        let result = if val > a { 0xFF - val + a + 1 } else { a - val };
 
-        self.set_flag(Flags::Zero, result);
+        println!("Comparing {}, {}", a, val);
+
+        self.set_flag(Flags::Zero, result == 0);
         self.set_flag(Flags::OverflowParity, val > a);
-
         self.set_flag(Flags::Subtract, true);
         self.set_flag(Flags::HalfCarry, (val & 0x0F) > (a & 0x0F));
+        self.set_flag(Flags::Carry, val > a);
+        self.set_flag(Flags::Sign, result >= 0x80);
 
-        result
+        result == 0
     }
 
     fn cp_a_reg(&mut self, reg: RegisterCode) {
