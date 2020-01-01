@@ -352,6 +352,16 @@ pub enum Opcode {
 
     // Halt
     Halt = 0x76,
+
+    // RST
+    Rst00 = 0xC7,
+    Rst10 = 0xD7,
+    Rst20 = 0xE7,
+    Rst30 = 0xF7,
+    Rst08 = 0xCF,
+    Rst18 = 0xDF,
+    Rst28 = 0xEF,
+    Rst38 = 0xFF,
 }
 
 impl Opcode {
@@ -850,6 +860,15 @@ impl Opcode {
             Opcode::RetM => cpu.ret_cond(Flags::Sign, true),
 
             Opcode::Halt => cpu.halt(),
+
+            Opcode::Rst00 => cpu.rst_lit(0x00),
+            Opcode::Rst10 => cpu.rst_lit(0x10),
+            Opcode::Rst20 => cpu.rst_lit(0x20),
+            Opcode::Rst30 => cpu.rst_lit(0x30),
+            Opcode::Rst08 => cpu.rst_lit(0x08),
+            Opcode::Rst18 => cpu.rst_lit(0x18),
+            Opcode::Rst28 => cpu.rst_lit(0x28),
+            Opcode::Rst38 => cpu.rst_lit(0x38),
 
             // Extended Opcodes
             Opcode::Ix => unimplemented!(),

@@ -14,6 +14,9 @@ mod bits;
 mod extended;
 pub mod opcode;
 
+const RESET: bool = false;
+const SET: bool = true;
+
 // define registers
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum TriStateLogic {
@@ -34,6 +37,8 @@ pub enum RegisterCode {
     E,
     H,
     L,
+    I,
+    R,
 }
 
 // register codes for 16 bit registers and 16 bit register pairs
@@ -77,6 +82,7 @@ pub struct Cpu {
     spec_reg:             [u32; 6], // contains I, R, IX, IY, PC, SP 
     halted:               bool,
     data_bus:             Bus,
+    is_repeating:         bool,
 }
 
 impl Cpu {
@@ -95,6 +101,7 @@ impl Cpu {
             halted:               false,
             interrupt_count:      0,
             data_bus:             buf,
+            is_repeating:         false,
         }
     }
 
@@ -114,7 +121,11 @@ impl Cpu {
     }
 
     pub fn reg_value(&self, code: RegisterCode) -> u8 {
-        self.reg[code as usize] as u8
+        match code {
+            RegisterCode::I => self.reg_value_16(RegisterCode16::I) as u8,
+            RegisterCode::R => self.reg_value_16(RegisterCode16::R) as u8,
+            _ => self.reg[code as usize] as u8,
+        }
     }
 
     fn set_reg_value_16(&mut self, code: RegisterCode16, val: u16) {
@@ -205,7 +216,11 @@ impl Cpu {
     }
 
     fn set_reg_value(&mut self, code: RegisterCode, value: u16) {
-        self.reg[code as usize] = value;
+        match code {
+            RegisterCode::I => self.set_reg_value_16(RegisterCode16::I, value),
+            RegisterCode::R => self.set_reg_value_16(RegisterCode16::R, value),
+            _ => self.reg[code as usize] = value,
+        }
     }
 
     // to test if we can set the read_write
@@ -246,8 +261,14 @@ impl Cpu {
         self.push(pc as u8 & 0xFF);
     }
 
-    /// Pop the contents of the PC off of the stack
-    fn pop_pc(&mut self) {}
+    /// Pop the contents of the PC off of the stack and places them into the PC register
+    fn pop_pc(&mut self) {
+        let low = self.pop() as u16;
+        let high = self.pop() as u16;
+        let val = (high << 8) | low;
+
+        self.set_reg_value_16(RegisterCode16::PC, val);
+    }
 
     fn fetch(&self, addr: u16) -> u8 {
         self.data_bus.cpu_read(addr).unwrap()
@@ -421,6 +442,20 @@ impl Cpu {
     /// LD A, B
     fn ld_reg_reg(&mut self, dst: RegisterCode, src: RegisterCode) {
         self.reg[dst as usize] = self.reg[src as usize];
+
+        // if the opcode is:
+        //      Ld A, I
+        //      Ld A, R
+        // then iff2 is copied to the parity flag
+        match (src, dst) {
+            (RegisterCode::A, RegisterCode::I) => {
+                self.set_flag(Flags::OverflowParity, self.iff2);
+            }
+            (RegisterCode::A, RegisterCode::R) => {
+                self.set_flag(Flags::OverflowParity, self.iff2);
+            }
+            _ => {}
+        }
         self.tick_clock(4);
     }
 
@@ -715,6 +750,31 @@ impl Cpu {
 
         self.set_reg_value_16(to, result as u16);
         self.tick_clock(11);
+    }
+
+    fn adc_reg16_reg16(&mut self, src: RegisterCode16, op: RegisterCode16) {
+        let add_to = self.reg_value_16(src) as u32;
+        let with = self.reg_value_16(op) as u32;
+        let carry = if self.flag(Flags::Carry) { 1 } else { 0 } as u32;
+
+        let mut result = add_to + with + carry;
+        self.set_flag(Flags::Carry, result > 0xFFFF);
+        result %= 0xFFFF;
+
+        self.set_flag(Flags::Sign, result >= 0x8000);
+        self.set_flag(Flags::Zero, result == 0);
+        self.set_flag(
+            Flags::HalfCarry,
+            (add_to & 0x0FFF) + (with & 0x0FFF) + carry > 0x0FFF,
+        );
+        self.set_flag(
+            Flags::OverflowParity,
+            add_to >> 15 == (carry + with) >> 15 && add_to >> 15 != result >> 15,
+        );
+        self.set_flag(Flags::Subtract, false);
+
+        self.set_reg_value_16(src, result as u16);
+        self.tick_clock(15);
     }
 
     fn sbc_reg16_reg16(&mut self, to: RegisterCode16, operand: RegisterCode16) {
@@ -1515,6 +1575,21 @@ impl Cpu {
         self.tick_clock(4);
     }
 
+    fn neg(&mut self) {
+        let acc = self.reg_value(RegisterCode::A);
+        let result = 0xFF - acc + 1;
+
+        self.set_flag(Flags::Sign, result >= 0x80);
+        self.set_flag(Flags::Zero, result == 0);
+        self.set_flag(Flags::Zero, result & 0x0F > 0);
+        self.set_flag(Flags::OverflowParity, acc == 0x80);
+        self.set_flag(Flags::Subtract, true);
+        self.set_flag(Flags::Carry, acc > 0);
+
+        self.set_reg_value(RegisterCode::A, result as u16);
+        self.tick_clock(8);
+    }
+
     fn ccf(&mut self) {
         self.set_flag(Flags::HalfCarry, self.flag(Flags::Carry));
         self.set_flag(Flags::Subtract, false);
@@ -1601,6 +1676,170 @@ impl Cpu {
 
         self.set_reg_value_16(RegisterCode16::PC, offset);
         self.tick_clock(11);
+    }
+
+    fn retn(&mut self) {
+        self.iff1 = self.iff2;
+
+        self.pop_pc();
+        self.tick_clock(14);
+    }
+
+    fn reti(&mut self) {
+        self.pop_pc();
+        self.tick_clock(14);
+    }
+
+    /// This is not supported in the sg-1000 and is a no op
+    fn interrupt_0(&mut self) {
+        self.tick_clock(8);
+    }
+
+    fn interrupt_1(&mut self) {
+        if self.iff1 {
+            self.push_pc();
+            self.set_reg_value_16(RegisterCode16::PC, 0x0038);
+            self.tick_clock(8);
+        }
+    }
+
+    fn interrupt_nomask(&mut self) {
+        self.push_pc();
+        self.iff2 = self.iff1;
+        self.iff1 = false;
+        self.set_reg_value_16(RegisterCode16::PC, 0x0066);
+        self.tick_clock(11);
+    }
+
+    fn ld_id(&mut self, is_inc: bool) {
+        let mut src = self.reg_value_16(RegisterCode16::HL);
+        let mut dst = self.reg_value_16(RegisterCode16::DE);
+
+        let val = self.fetch(src);
+        self.store(dst, val);
+
+        let inc = |val: u16| (((val as u32) + 1) % 0xFFFF) as u16;
+        let dec = |val: u16| if val == 0 { 0xFFFF } else { val - 1 };
+
+        if is_inc {
+            src = inc(src);
+            dst = inc(src);
+        } else {
+            src = dec(src);
+            dst = dec(dst);
+        };
+
+        let mut bc = self.reg_value_16(RegisterCode16::BC);
+        bc = dec(bc);
+        self.set_reg_value_16(RegisterCode16::BC, bc);
+
+        self.set_reg_value_16(RegisterCode16::HL, src);
+        self.set_reg_value_16(RegisterCode16::DE, dst);
+
+        self.set_flag(Flags::HalfCarry, RESET);
+        self.set_flag(Flags::OverflowParity, bc != 0);
+        self.set_flag(Flags::Subtract, RESET);
+
+        self.tick_clock(16);
+    }
+
+    fn ld_id_r(&mut self, is_inc: bool) {
+        self.ld_id(is_inc);
+
+        // if we have to repeat the opcode then we do not mess with the flags.  The next time the
+        // cpu uses an opcode it will repeat this command.  No looping allows the cpu to register
+        // non-maskable interrupts from perripherals
+        if self.reg_value_16(RegisterCode16::BC) > 0 {
+            let addr = self.reg_value_16(RegisterCode16::PC);
+            self.set_reg_value_16(RegisterCode16::PC, addr - 2);
+            // we only have extra clock ticks if we need to change the PC to repeat the command
+            self.tick_clock(5);
+        } else {
+            // we are done repeating, so we can now set the flags
+            self.set_flag(Flags::HalfCarry, RESET);
+            self.set_flag(Flags::OverflowParity, RESET);
+            self.set_flag(Flags::Subtract, RESET);
+        }
+    }
+
+    fn cp_id(&mut self, is_inc: bool) {
+        let inc = |val: u16| (((val as u32) + 1) % 0xFFFF) as u16;
+        let dec = |val: u16| if val == 0 { 0xFFFF } else { val - 1 };
+
+        let mut hl = self.reg_value_16(RegisterCode16::HL);
+        let val = self.fetch(hl);
+        let a = self.reg_value(RegisterCode::A);
+
+        let result = if val > a { 0xFF - val + a + 1 } else { a - val };
+        let mut bc = self.reg_value_16(RegisterCode16::BC);
+        bc = dec(bc);
+        self.set_reg_value_16(RegisterCode16::BC, bc);
+
+        self.set_flag(Flags::Sign, result >= 0x80);
+        self.set_flag(Flags::Zero, result == 0);
+        self.set_flag(Flags::HalfCarry, (val & 0x0F) > (a & 0x0F));
+        self.set_flag(Flags::OverflowParity, bc != 0);
+        self.set_flag(Flags::Subtract, SET);
+
+        hl = if is_inc { inc(hl) } else { dec(hl) };
+        self.set_reg_value_16(RegisterCode16::HL, hl);
+    }
+
+    fn cp_id_r(&mut self, is_inc: bool) {
+        self.cp_id(is_inc);
+
+        // if we have to repeat the opcode then we do not mess with the flags.  We repeat the
+        // command if the BC register pair (BC for byte-count) is greater than 0 and A != (HL).
+        // The next time the cpu uses an opcode it will repeat this command.  No looping allows
+        // the cpu to register non-maskable interrupts from perripherals
+        if self.reg_value_16(RegisterCode16::BC) > 0 && !self.flag(Flags::Zero) {
+            let addr = self.reg_value_16(RegisterCode16::PC);
+            self.set_reg_value_16(RegisterCode16::PC, addr - 2);
+            // we only have extra clock ticks if we need to change the PC to repeat the command
+            self.tick_clock(5);
+        }
+    }
+
+    fn rrd(&mut self) {
+        let mut acc = self.reg_value(RegisterCode::A);
+        let addr = self.reg_value_16(RegisterCode16::HL);
+        let mut val = self.fetch(addr);
+
+        let temp = val >> 4;
+        val = ((val & 0b1111) << 4) | acc & 0b1111; // set the high bits to the low bits and the low bits to the low bits of the accumulator
+        acc = (acc & 0b1111_0000) | temp;
+
+        self.set_flag(Flags::Sign, acc >= 0x80);
+        self.set_flag(Flags::Zero, acc == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(acc as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.store(addr, val);
+        self.set_reg_value(RegisterCode::A, acc as u16);
+
+        self.tick_clock(18);
+    }
+
+    fn rld(&mut self) {
+        let mut acc = self.reg_value(RegisterCode::A);
+        let addr = self.reg_value_16(RegisterCode16::HL);
+        let mut val = self.fetch(addr);
+
+        let temp = val & 0b1111;
+        val = ((acc & 0b1111) << 4) | val >> 4; // set the high bits to the low bits and the low bits to the low bits of the accumulator
+        acc = (acc & 0b1111_0000) | temp;
+
+        self.set_flag(Flags::Sign, acc >= 0x80);
+        self.set_flag(Flags::Zero, acc == 0);
+        self.set_flag(Flags::HalfCarry, false);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(acc as u32));
+        self.set_flag(Flags::Subtract, false);
+
+        self.store(addr, val);
+        self.set_reg_value(RegisterCode::A, acc as u16);
+
+        self.tick_clock(18);
     }
 
     fn test_bit_val(val: u8, bit: u8) -> bool {
