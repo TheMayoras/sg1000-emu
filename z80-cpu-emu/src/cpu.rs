@@ -39,6 +39,10 @@ pub enum RegisterCode {
     L,
     I,
     R,
+    IXh,
+    IXl,
+    IYh,
+    IYl,
 }
 
 // register codes for 16 bit registers and 16 bit register pairs
@@ -82,13 +86,13 @@ pub struct Cpu {
     spec_reg:             [u32; 6], // contains I, R, IX, IY, PC, SP 
     halted:               bool,
     data_bus:             Bus,
-    is_repeating:         bool,
+    interrupt_req:         bool,
 }
 
 impl Cpu {
     #[rustfmt::skip]
     /// TODO: set buffer to point to a vector of binary file data 
-    pub fn new(buf: Bus) -> Cpu {
+    pub fn new(data: Bus) -> Cpu {
         Cpu {
             clock:                0,
             clock_queue:          0,
@@ -100,8 +104,8 @@ impl Cpu {
             spec_reg:             [0; 6],
             halted:               false,
             interrupt_count:      0,
-            data_bus:             buf,
-            is_repeating:         false,
+            data_bus:             data,
+            interrupt_req:        false,
         }
     }
 
@@ -121,9 +125,14 @@ impl Cpu {
     }
 
     pub fn reg_value(&self, code: RegisterCode) -> u8 {
+        use RegisterCode::*;
         match code {
-            RegisterCode::I => self.reg_value_16(RegisterCode16::I) as u8,
-            RegisterCode::R => self.reg_value_16(RegisterCode16::R) as u8,
+            I => self.reg_value_16(RegisterCode16::I) as u8,
+            R => self.reg_value_16(RegisterCode16::R) as u8,
+            IXh => (self.reg_value_16(RegisterCode16::IX) >> 8) as u8,
+            IYh => (self.reg_value_16(RegisterCode16::IX) >> 8) as u8,
+            IXl => (self.reg_value_16(RegisterCode16::IX) & 0x0F) as u8,
+            IYl => (self.reg_value_16(RegisterCode16::IY) & 0x0F) as u8,
             _ => self.reg[code as usize] as u8,
         }
     }
@@ -216,9 +225,29 @@ impl Cpu {
     }
 
     fn set_reg_value(&mut self, code: RegisterCode, value: u16) {
+        use RegisterCode::*;
         match code {
-            RegisterCode::I => self.set_reg_value_16(RegisterCode16::I, value),
-            RegisterCode::R => self.set_reg_value_16(RegisterCode16::R, value),
+            I => self.set_reg_value_16(RegisterCode16::I, value),
+            R => self.set_reg_value_16(RegisterCode16::R, value),
+            IXh => {
+                let val = self.reg_value_16(RegisterCode16::IX);
+                self.set_reg_value_16(RegisterCode16::IX, (val & 0x0F) | value << 8);
+            }
+
+            IXl => {
+                let val = self.reg_value_16(RegisterCode16::IX);
+                self.set_reg_value_16(RegisterCode16::IX, (val & 0xF0) | value);
+            }
+            IYh => {
+                let val = self.reg_value_16(RegisterCode16::IY);
+                self.set_reg_value_16(RegisterCode16::IY, (val & 0x0F) | value << 8);
+            }
+
+            IYl => {
+                let val = self.reg_value_16(RegisterCode16::IY);
+                self.set_reg_value_16(RegisterCode16::IY, (val & 0xF0) | value);
+            }
+
             _ => self.reg[code as usize] = value,
         }
     }
@@ -423,7 +452,15 @@ impl Cpu {
         print!("PC: {}  |  ", self.reg_value_16(RegisterCode16::PC));
         let opcode = self.next_byte();
         println!("Byte 0x{:x}", opcode);
-        Opcode::operate_u8(self, opcode);
+
+        if self.interrupt_req {
+            self.interrupt_req = false;
+            self.interrupt_nomask();
+        } else if self.halted {
+            Opcode::operate(self, opcode::Opcode::NoOp);
+        } else {
+            Opcode::operate_u8(self, opcode);
+        }
     }
 }
 

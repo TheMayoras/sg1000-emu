@@ -374,6 +374,34 @@ impl Opcode {
     }
 
     pub fn operate(cpu: &mut Cpu, opcode: Opcode) {
+        Opcode::operate_with(
+            cpu,
+            opcode,
+            RegisterCode16::HL,
+            RegisterCode::H,
+            RegisterCode::L,
+            Opcode::rel_addr(RegisterCode16::HL),
+        );
+    }
+
+    fn rel_addr(reg: RegisterCode16) -> impl FnMut(&mut Cpu) -> u16 {
+        move |cpu| cpu.indirect_reg_addr(reg)
+    }
+
+    fn index_addr<F>(reg: RegisterCode16) -> impl FnMut(&mut Cpu) -> u16 {
+        move |cpu| cpu.index_addr(reg)
+    }
+
+    fn operate_with<T>(
+        cpu: &mut Cpu,
+        opcode: Opcode,
+        reg: RegisterCode16,
+        upper: RegisterCode,
+        lower: RegisterCode,
+        mut pointer: T,
+    ) where
+        T: FnMut(&mut Cpu) -> u16,
+    {
         use super::Flags;
         println!("Found opcode: {:?}", opcode);
         match opcode {
@@ -384,88 +412,88 @@ impl Opcode {
             Opcode::LdBC => cpu.ld_reg_reg(RegisterCode::B, RegisterCode::C),
             Opcode::LdBD => cpu.ld_reg_reg(RegisterCode::B, RegisterCode::D),
             Opcode::LdBE => cpu.ld_reg_reg(RegisterCode::B, RegisterCode::E),
-            Opcode::LdBH => cpu.ld_reg_reg(RegisterCode::B, RegisterCode::H),
-            Opcode::LdBL => cpu.ld_reg_reg(RegisterCode::B, RegisterCode::L),
+            Opcode::LdBH => cpu.ld_reg_reg(RegisterCode::B, upper),
+            Opcode::LdBL => cpu.ld_reg_reg(RegisterCode::B, lower),
             Opcode::LdBA => cpu.ld_reg_reg(RegisterCode::B, RegisterCode::A),
             Opcode::LdDB => cpu.ld_reg_reg(RegisterCode::D, RegisterCode::B),
             Opcode::LdDC => cpu.ld_reg_reg(RegisterCode::D, RegisterCode::C),
             Opcode::LdDD => cpu.ld_reg_reg(RegisterCode::D, RegisterCode::D),
             Opcode::LdDE => cpu.ld_reg_reg(RegisterCode::D, RegisterCode::E),
-            Opcode::LdDH => cpu.ld_reg_reg(RegisterCode::D, RegisterCode::H),
-            Opcode::LdDL => cpu.ld_reg_reg(RegisterCode::D, RegisterCode::L),
+            Opcode::LdDH => cpu.ld_reg_reg(RegisterCode::D, upper),
+            Opcode::LdDL => cpu.ld_reg_reg(RegisterCode::D, lower),
             Opcode::LdDA => cpu.ld_reg_reg(RegisterCode::D, RegisterCode::A),
-            Opcode::LdHB => cpu.ld_reg_reg(RegisterCode::H, RegisterCode::B),
-            Opcode::LdHC => cpu.ld_reg_reg(RegisterCode::H, RegisterCode::C),
-            Opcode::LdHD => cpu.ld_reg_reg(RegisterCode::H, RegisterCode::D),
-            Opcode::LdHE => cpu.ld_reg_reg(RegisterCode::H, RegisterCode::E),
-            Opcode::LdHH => cpu.ld_reg_reg(RegisterCode::H, RegisterCode::H),
-            Opcode::LdHL => cpu.ld_reg_reg(RegisterCode::H, RegisterCode::L),
-            Opcode::LdHA => cpu.ld_reg_reg(RegisterCode::H, RegisterCode::A),
+            Opcode::LdHB => cpu.ld_reg_reg(upper, RegisterCode::B),
+            Opcode::LdHC => cpu.ld_reg_reg(upper, RegisterCode::C),
+            Opcode::LdHD => cpu.ld_reg_reg(upper, RegisterCode::D),
+            Opcode::LdHE => cpu.ld_reg_reg(upper, RegisterCode::E),
+            Opcode::LdHH => cpu.ld_reg_reg(upper, RegisterCode::H),
+            Opcode::LdHL => cpu.ld_reg_reg(upper, lower),
+            Opcode::LdHA => cpu.ld_reg_reg(upper, RegisterCode::A),
             Opcode::LdCB => cpu.ld_reg_reg(RegisterCode::C, RegisterCode::B),
             Opcode::LdCC => cpu.ld_reg_reg(RegisterCode::C, RegisterCode::C),
             Opcode::LdCD => cpu.ld_reg_reg(RegisterCode::C, RegisterCode::D),
             Opcode::LdCE => cpu.ld_reg_reg(RegisterCode::C, RegisterCode::E),
-            Opcode::LdCH => cpu.ld_reg_reg(RegisterCode::C, RegisterCode::H),
-            Opcode::LdCL => cpu.ld_reg_reg(RegisterCode::C, RegisterCode::L),
+            Opcode::LdCH => cpu.ld_reg_reg(RegisterCode::C, upper),
+            Opcode::LdCL => cpu.ld_reg_reg(RegisterCode::C, lower),
             Opcode::LdCA => cpu.ld_reg_reg(RegisterCode::C, RegisterCode::A),
             Opcode::LdEB => cpu.ld_reg_reg(RegisterCode::E, RegisterCode::B),
             Opcode::LdEC => cpu.ld_reg_reg(RegisterCode::E, RegisterCode::C),
             Opcode::LdED => cpu.ld_reg_reg(RegisterCode::E, RegisterCode::D),
             Opcode::LdEE => cpu.ld_reg_reg(RegisterCode::E, RegisterCode::E),
-            Opcode::LdEH => cpu.ld_reg_reg(RegisterCode::E, RegisterCode::H),
-            Opcode::LdEL => cpu.ld_reg_reg(RegisterCode::E, RegisterCode::L),
+            Opcode::LdEH => cpu.ld_reg_reg(RegisterCode::E, upper),
+            Opcode::LdEL => cpu.ld_reg_reg(RegisterCode::E, lower),
             Opcode::LdEA => cpu.ld_reg_reg(RegisterCode::E, RegisterCode::A),
-            Opcode::LdLB => cpu.ld_reg_reg(RegisterCode::L, RegisterCode::B),
-            Opcode::LdLC => cpu.ld_reg_reg(RegisterCode::L, RegisterCode::C),
-            Opcode::LdLD => cpu.ld_reg_reg(RegisterCode::L, RegisterCode::D),
-            Opcode::LdLE => cpu.ld_reg_reg(RegisterCode::L, RegisterCode::E),
-            Opcode::LdLH => cpu.ld_reg_reg(RegisterCode::L, RegisterCode::H),
-            Opcode::LdLL => cpu.ld_reg_reg(RegisterCode::L, RegisterCode::L),
-            Opcode::LdLA => cpu.ld_reg_reg(RegisterCode::L, RegisterCode::A),
+            Opcode::LdLB => cpu.ld_reg_reg(lower, RegisterCode::B),
+            Opcode::LdLC => cpu.ld_reg_reg(lower, RegisterCode::C),
+            Opcode::LdLD => cpu.ld_reg_reg(lower, RegisterCode::D),
+            Opcode::LdLE => cpu.ld_reg_reg(lower, RegisterCode::E),
+            Opcode::LdLH => cpu.ld_reg_reg(lower, upper),
+            Opcode::LdLL => cpu.ld_reg_reg(lower, RegisterCode::L),
+            Opcode::LdLA => cpu.ld_reg_reg(lower, RegisterCode::A),
             Opcode::LdAB => cpu.ld_reg_reg(RegisterCode::A, RegisterCode::B),
             Opcode::LdAC => cpu.ld_reg_reg(RegisterCode::A, RegisterCode::C),
             Opcode::LdAD => cpu.ld_reg_reg(RegisterCode::A, RegisterCode::D),
             Opcode::LdAE => cpu.ld_reg_reg(RegisterCode::A, RegisterCode::E),
-            Opcode::LdAH => cpu.ld_reg_reg(RegisterCode::A, RegisterCode::H),
-            Opcode::LdAL => cpu.ld_reg_reg(RegisterCode::A, RegisterCode::L),
+            Opcode::LdAH => cpu.ld_reg_reg(RegisterCode::A, upper),
+            Opcode::LdAL => cpu.ld_reg_reg(RegisterCode::A, lower),
             Opcode::LdAA => cpu.ld_reg_reg(RegisterCode::A, RegisterCode::A),
 
             // Load Reg, Literal
             Opcode::LdBLit => cpu.ld_reg_lit(RegisterCode::B),
             Opcode::LdDLit => cpu.ld_reg_lit(RegisterCode::D),
-            Opcode::LdHLit => cpu.ld_reg_lit(RegisterCode::H),
+            Opcode::LdHLit => cpu.ld_reg_lit(upper),
             Opcode::LdCLit => cpu.ld_reg_lit(RegisterCode::C),
             Opcode::LdELit => cpu.ld_reg_lit(RegisterCode::E),
-            Opcode::LdLLit => cpu.ld_reg_lit(RegisterCode::L),
+            Opcode::LdLLit => cpu.ld_reg_lit(lower),
             Opcode::LdALit => cpu.ld_reg_lit(RegisterCode::A),
 
             // Load Reg, (16 Bit Pair)
             Opcode::LdBHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.ld_reg_addr(RegisterCode::B, addr)
             }
             Opcode::LdDHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.ld_reg_addr(RegisterCode::D, addr)
             }
             Opcode::LdHHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
-                cpu.ld_reg_addr(RegisterCode::H, addr)
+                let addr = pointer(cpu);
+                cpu.ld_reg_addr(upper, addr)
             }
             Opcode::LdCHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.ld_reg_addr(RegisterCode::C, addr)
             }
             Opcode::LdEHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.ld_reg_addr(RegisterCode::E, addr)
             }
             Opcode::LdLHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
-                cpu.ld_reg_addr(RegisterCode::L, addr)
+                let addr = pointer(cpu);
+                cpu.ld_reg_addr(lower, addr)
             }
             Opcode::LdAHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.ld_reg_addr(RegisterCode::A, addr)
             }
             Opcode::LdABCptr => {
@@ -479,45 +507,45 @@ impl Opcode {
 
             // Load (HL), Reg
             Opcode::LdHLptrB => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.ld_addr_reg(addr, RegisterCode::B);
             }
             Opcode::LdHLptrC => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.ld_addr_reg(addr, RegisterCode::C);
             }
             Opcode::LdHLptrD => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.ld_addr_reg(addr, RegisterCode::D);
             }
             Opcode::LdHLptrE => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.ld_addr_reg(addr, RegisterCode::E);
             }
             Opcode::LdHLptrH => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
-                cpu.ld_addr_reg(addr, RegisterCode::H);
+                let addr = pointer(cpu);
+                cpu.ld_addr_reg(addr, upper);
             }
             Opcode::LdHLptrL => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
-                cpu.ld_addr_reg(addr, RegisterCode::L);
+                let addr = pointer(cpu);
+                cpu.ld_addr_reg(addr, lower);
             }
             Opcode::LdHLptrA => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.ld_addr_reg(addr, RegisterCode::A);
             }
 
             // Ld (HL), literal
             Opcode::LdHlptrLit => {
                 let val = cpu.imm_addr();
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.ld_addr_lit(addr, val);
             }
 
             // ld (literal), Reg
             Opcode::LdLitptrH => {
                 let addr = cpu.imm_addr_ex();
-                cpu.ld_addr_reg(addr, RegisterCode::H);
+                cpu.ld_addr_reg(addr, upper);
             }
 
             Opcode::LdLitptrA => {
@@ -562,14 +590,14 @@ impl Opcode {
             /* ------------- inc Reg ------------- */
             Opcode::IncB => cpu.inc_reg(RegisterCode::B),
             Opcode::IncD => cpu.inc_reg(RegisterCode::D),
-            Opcode::IncH => cpu.inc_reg(RegisterCode::H),
+            Opcode::IncH => cpu.inc_reg(upper),
             Opcode::IncC => cpu.inc_reg(RegisterCode::C),
             Opcode::IncE => cpu.inc_reg(RegisterCode::E),
-            Opcode::IncL => cpu.inc_reg(RegisterCode::L),
+            Opcode::IncL => cpu.inc_reg(lower),
             Opcode::IncA => cpu.inc_reg(RegisterCode::A),
 
             Opcode::IncHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.inc_addr(addr);
             }
 
@@ -580,14 +608,14 @@ impl Opcode {
 
             Opcode::DecB => cpu.dec_reg(RegisterCode::B),
             Opcode::DecD => cpu.dec_reg(RegisterCode::D),
-            Opcode::DecH => cpu.dec_reg(RegisterCode::H),
+            Opcode::DecH => cpu.dec_reg(upper),
             Opcode::DecC => cpu.dec_reg(RegisterCode::C),
             Opcode::DecE => cpu.dec_reg(RegisterCode::E),
-            Opcode::DecL => cpu.dec_reg(RegisterCode::L),
+            Opcode::DecL => cpu.dec_reg(lower),
             Opcode::DecA => cpu.dec_reg(RegisterCode::A),
 
             Opcode::DecHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.dec_addr(addr);
             }
 
@@ -600,11 +628,11 @@ impl Opcode {
             Opcode::AddAC => cpu.add_a_reg(RegisterCode::C),
             Opcode::AddAD => cpu.add_a_reg(RegisterCode::D),
             Opcode::AddAE => cpu.add_a_reg(RegisterCode::E),
-            Opcode::AddAH => cpu.add_a_reg(RegisterCode::H),
-            Opcode::AddAL => cpu.add_a_reg(RegisterCode::L),
+            Opcode::AddAH => cpu.add_a_reg(upper),
+            Opcode::AddAL => cpu.add_a_reg(lower),
             Opcode::AddAA => cpu.add_a_reg(RegisterCode::A),
             Opcode::AddAHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.add_a_addr(addr);
             }
 
@@ -618,11 +646,11 @@ impl Opcode {
             Opcode::AdcAC => cpu.add_a_reg_carry(RegisterCode::C),
             Opcode::AdcAD => cpu.add_a_reg_carry(RegisterCode::D),
             Opcode::AdcAE => cpu.add_a_reg_carry(RegisterCode::E),
-            Opcode::AdcAH => cpu.add_a_reg_carry(RegisterCode::H),
-            Opcode::AdcAL => cpu.add_a_reg_carry(RegisterCode::L),
+            Opcode::AdcAH => cpu.add_a_reg_carry(upper),
+            Opcode::AdcAL => cpu.add_a_reg_carry(lower),
             Opcode::AdcAA => cpu.add_a_reg_carry(RegisterCode::A),
             Opcode::AdcAHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.add_a_addr_carry(addr);
             }
             Opcode::AdcALit => {
@@ -639,11 +667,11 @@ impl Opcode {
             Opcode::SubAC => cpu.sub_a_reg(RegisterCode::C),
             Opcode::SubAD => cpu.sub_a_reg(RegisterCode::D),
             Opcode::SubAE => cpu.sub_a_reg(RegisterCode::E),
-            Opcode::SubAH => cpu.sub_a_reg(RegisterCode::H),
-            Opcode::SubAL => cpu.sub_a_reg(RegisterCode::L),
+            Opcode::SubAH => cpu.sub_a_reg(upper),
+            Opcode::SubAL => cpu.sub_a_reg(lower),
             Opcode::SubAA => cpu.sub_a_reg(RegisterCode::A),
             Opcode::SubAHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.sub_a_addr(addr);
             }
 
@@ -656,11 +684,11 @@ impl Opcode {
             Opcode::SubcAC => cpu.sub_a_reg_carry(RegisterCode::C),
             Opcode::SubcAD => cpu.sub_a_reg_carry(RegisterCode::D),
             Opcode::SubcAE => cpu.sub_a_reg_carry(RegisterCode::E),
-            Opcode::SubcAH => cpu.sub_a_reg_carry(RegisterCode::H),
-            Opcode::SubcAL => cpu.sub_a_reg_carry(RegisterCode::L),
+            Opcode::SubcAH => cpu.sub_a_reg_carry(upper),
+            Opcode::SubcAL => cpu.sub_a_reg_carry(lower),
             Opcode::SubcAA => cpu.sub_a_reg_carry(RegisterCode::A),
             Opcode::SubcAHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.sub_a_addr_carry(addr);
             }
             Opcode::SubcALit => {
@@ -671,11 +699,11 @@ impl Opcode {
             Opcode::AndAC => cpu.and_a_reg(RegisterCode::C),
             Opcode::AndAD => cpu.and_a_reg(RegisterCode::D),
             Opcode::AndAE => cpu.and_a_reg(RegisterCode::E),
-            Opcode::AndAH => cpu.and_a_reg(RegisterCode::H),
-            Opcode::AndAL => cpu.and_a_reg(RegisterCode::L),
+            Opcode::AndAH => cpu.and_a_reg(upper),
+            Opcode::AndAL => cpu.and_a_reg(lower),
             Opcode::AndAA => cpu.and_a_reg(RegisterCode::A),
             Opcode::AndAHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.and_a_addr(addr);
             }
             Opcode::AndALit => {
@@ -687,11 +715,11 @@ impl Opcode {
             Opcode::OrAC => cpu.or_a_reg(RegisterCode::C),
             Opcode::OrAD => cpu.or_a_reg(RegisterCode::D),
             Opcode::OrAE => cpu.or_a_reg(RegisterCode::E),
-            Opcode::OrAH => cpu.or_a_reg(RegisterCode::H),
-            Opcode::OrAL => cpu.or_a_reg(RegisterCode::L),
+            Opcode::OrAH => cpu.or_a_reg(upper),
+            Opcode::OrAL => cpu.or_a_reg(lower),
             Opcode::OrAA => cpu.or_a_reg(RegisterCode::A),
             Opcode::OrAHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.or_a_addr(addr);
             }
             Opcode::OrALit => {
@@ -703,11 +731,11 @@ impl Opcode {
             Opcode::XorAC => cpu.xor_a_reg(RegisterCode::C),
             Opcode::XorAD => cpu.xor_a_reg(RegisterCode::D),
             Opcode::XorAE => cpu.xor_a_reg(RegisterCode::E),
-            Opcode::XorAH => cpu.xor_a_reg(RegisterCode::H),
-            Opcode::XorAL => cpu.xor_a_reg(RegisterCode::L),
+            Opcode::XorAH => cpu.xor_a_reg(upper),
+            Opcode::XorAL => cpu.xor_a_reg(lower),
             Opcode::XorAA => cpu.xor_a_reg(RegisterCode::A),
             Opcode::XorAHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.xor_a_addr(addr);
             }
             Opcode::XorALit => {
@@ -719,11 +747,11 @@ impl Opcode {
             Opcode::CpAC => cpu.cp_a_reg(RegisterCode::C),
             Opcode::CpAD => cpu.cp_a_reg(RegisterCode::D),
             Opcode::CpAE => cpu.cp_a_reg(RegisterCode::E),
-            Opcode::CpAH => cpu.cp_a_reg(RegisterCode::H),
-            Opcode::CpAL => cpu.cp_a_reg(RegisterCode::L),
+            Opcode::CpAH => cpu.cp_a_reg(upper),
+            Opcode::CpAL => cpu.cp_a_reg(lower),
             Opcode::CpAA => cpu.cp_a_reg(RegisterCode::A),
             Opcode::CpAHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.cp_a_addr(addr);
             }
             Opcode::CpALit => {
@@ -794,13 +822,13 @@ impl Opcode {
                 cpu.jmp_cond(addr, Flags::Zero, false);
             }
             Opcode::JpHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.jmp(addr);
             }
 
             Opcode::DJNz => cpu.djnz(),
             Opcode::ExAfAf => cpu.ex_af_altaf(),
-            Opcode::ExSPptrHL => cpu.ex_spptr_reg(RegisterCode16::HL),
+            Opcode::ExSPptrHL => cpu.ex_spptr_reg(reg),
             Opcode::Exx => cpu.exx(),
             Opcode::ExDEHL => cpu.ex_de_hl(),
 

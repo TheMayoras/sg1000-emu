@@ -46,7 +46,6 @@ pub enum Extnd {
     RRD = 0x67,
     RLD = 0x6F,
 
-    // TODO: add the implementation for these opcode
     AdcHLBC = 0x4A,
     AdcHLDE = 0x5A,
     AdcHLHL = 0x6A,
@@ -68,6 +67,7 @@ pub enum Extnd {
 
     Cpd = 0xA9,
     Cpdr = 0xB9,
+    // TODO: Anything IN and OUT related
 }
 
 impl Extnd {
