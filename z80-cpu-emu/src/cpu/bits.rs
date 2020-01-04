@@ -1,6 +1,6 @@
 extern crate num;
 
-use super::{Cpu, RegisterCode, RegisterCode16};
+use super::{BitsOperator, Cpu, RegisterCode, RegisterCode16};
 
 #[repr(u8)]
 #[derive(FromPrimitive, Debug, Copy, Clone, PartialEq, Eq)]
@@ -323,108 +323,340 @@ impl BitsOpcode {
         num::FromPrimitive::from_u8(value).unwrap()
     }
 
-    pub fn operate_u8(cpu: &mut Cpu, value: u8) {
-        BitsOpcode::operate(cpu, BitsOpcode::from_u8(value));
+    pub fn operate_u8<U>(cpu: &mut Cpu, value: u8, mut bits_op: U)
+    where
+        U: BitsOperator,
+    {
+        BitsOpcode::operate(cpu, BitsOpcode::from_u8(value), bits_op);
     }
 
-    pub fn operate(cpu: &mut Cpu, opcode: BitsOpcode) {
+    pub fn operate<U>(cpu: &mut Cpu, opcode: BitsOpcode, mut bits_op: U)
+    where
+        U: BitsOperator,
+    {
         println!("Found Bits Opcode: {:?}", opcode);
+
+        bits_op.prepare(cpu);
 
         use BitsOpcode::*;
         match opcode {
-            RlcB => cpu.rlc_reg(RegisterCode::B),
-            RlcC => cpu.rlc_reg(RegisterCode::C),
-            RlcD => cpu.rlc_reg(RegisterCode::D),
-            RlcE => cpu.rlc_reg(RegisterCode::E),
-            RlcH => cpu.rlc_reg(RegisterCode::H),
-            RlcL => cpu.rlc_reg(RegisterCode::L),
-            RlcA => cpu.rlc_reg(RegisterCode::A),
+            RlcB => {
+                bits_op.pre_operate(cpu, RegisterCode::B);
+                cpu.rlc_reg(RegisterCode::B);
+                bits_op.post_operate(cpu, RegisterCode::B);
+            }
+            RlcC => {
+                bits_op.pre_operate(cpu, RegisterCode::C);
+                cpu.rlc_reg(RegisterCode::C);
+                bits_op.post_operate(cpu, RegisterCode::C);
+            }
+            RlcD => {
+                bits_op.pre_operate(cpu, RegisterCode::D);
+                cpu.rlc_reg(RegisterCode::D);
+                bits_op.post_operate(cpu, RegisterCode::D);
+            }
+            RlcE => {
+                bits_op.pre_operate(cpu, RegisterCode::E);
+                cpu.rlc_reg(RegisterCode::E);
+                bits_op.post_operate(cpu, RegisterCode::E);
+            }
+            RlcH => {
+                bits_op.pre_operate(cpu, RegisterCode::H);
+                cpu.rlc_reg(RegisterCode::H);
+                bits_op.post_operate(cpu, RegisterCode::H);
+            }
+            RlcL => {
+                bits_op.pre_operate(cpu, RegisterCode::L);
+                cpu.rlc_reg(RegisterCode::L);
+                bits_op.post_operate(cpu, RegisterCode::L);
+            }
+            RlcA => {
+                bits_op.pre_operate(cpu, RegisterCode::A);
+                cpu.rlc_reg(RegisterCode::A);
+                bits_op.post_operate(cpu, RegisterCode::A);
+            }
             RlcHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.rlc_addr(addr);
             }
 
-            RlB => cpu.rl_reg(RegisterCode::B),
-            RlC => cpu.rl_reg(RegisterCode::D),
-            RlD => cpu.rl_reg(RegisterCode::E),
-            RlE => cpu.rl_reg(RegisterCode::E),
-            RlH => cpu.rl_reg(RegisterCode::H),
-            RlL => cpu.rl_reg(RegisterCode::A),
-            RlA => cpu.rl_reg(RegisterCode::A),
+            RlB => {
+                bits_op.pre_operate(cpu, RegisterCode::B);
+                cpu.rl_reg(RegisterCode::B);
+                bits_op.post_operate(cpu, RegisterCode::B);
+            }
+            RlC => {
+                bits_op.pre_operate(cpu, RegisterCode::D);
+                cpu.rl_reg(RegisterCode::D);
+                bits_op.post_operate(cpu, RegisterCode::D);
+            }
+            RlD => {
+                bits_op.pre_operate(cpu, RegisterCode::E);
+                cpu.rl_reg(RegisterCode::E);
+                bits_op.post_operate(cpu, RegisterCode::E);
+            }
+            RlE => {
+                bits_op.pre_operate(cpu, RegisterCode::E);
+                cpu.rl_reg(RegisterCode::E);
+                bits_op.post_operate(cpu, RegisterCode::E);
+            }
+            RlH => {
+                bits_op.pre_operate(cpu, RegisterCode::H);
+                cpu.rl_reg(RegisterCode::H);
+                bits_op.post_operate(cpu, RegisterCode::H);
+            }
+            RlL => {
+                bits_op.pre_operate(cpu, RegisterCode::A);
+                cpu.rl_reg(RegisterCode::A);
+                bits_op.post_operate(cpu, RegisterCode::A);
+            }
+            RlA => {
+                bits_op.pre_operate(cpu, RegisterCode::A);
+                cpu.rl_reg(RegisterCode::A);
+                bits_op.post_operate(cpu, RegisterCode::A);
+            }
             RlHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.rl_addr(addr);
             }
 
-            SlaB => cpu.sla_reg(RegisterCode::B),
-            SlaC => cpu.sla_reg(RegisterCode::C),
-            SlaD => cpu.sla_reg(RegisterCode::D),
-            SlaE => cpu.sla_reg(RegisterCode::E),
-            SlaH => cpu.sla_reg(RegisterCode::H),
-            SlaL => cpu.sla_reg(RegisterCode::L),
-            SlaA => cpu.sla_reg(RegisterCode::A),
+            SlaB => {
+                bits_op.pre_operate(cpu, RegisterCode::B);
+                cpu.sla_reg(RegisterCode::B);
+                bits_op.post_operate(cpu, RegisterCode::B);
+            }
+            SlaC => {
+                bits_op.pre_operate(cpu, RegisterCode::C);
+                cpu.sla_reg(RegisterCode::C);
+                bits_op.post_operate(cpu, RegisterCode::C);
+            }
+            SlaD => {
+                bits_op.pre_operate(cpu, RegisterCode::D);
+                cpu.sla_reg(RegisterCode::D);
+                bits_op.post_operate(cpu, RegisterCode::D);
+            }
+            SlaE => {
+                bits_op.pre_operate(cpu, RegisterCode::E);
+                cpu.sla_reg(RegisterCode::E);
+                bits_op.post_operate(cpu, RegisterCode::E);
+            }
+            SlaH => {
+                bits_op.pre_operate(cpu, RegisterCode::H);
+                cpu.sla_reg(RegisterCode::H);
+                bits_op.post_operate(cpu, RegisterCode::H);
+            }
+            SlaL => {
+                bits_op.pre_operate(cpu, RegisterCode::L);
+                cpu.sla_reg(RegisterCode::L);
+                bits_op.post_operate(cpu, RegisterCode::L);
+            }
+            SlaA => {
+                bits_op.pre_operate(cpu, RegisterCode::A);
+                cpu.sla_reg(RegisterCode::A);
+                bits_op.post_operate(cpu, RegisterCode::A);
+            }
             SlaHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.sla_addr(addr);
             }
 
-            SllB => cpu.sll_reg(RegisterCode::B),
-            SllC => cpu.sll_reg(RegisterCode::C),
-            SllD => cpu.sll_reg(RegisterCode::D),
-            SllE => cpu.sll_reg(RegisterCode::E),
-            SllH => cpu.sll_reg(RegisterCode::H),
-            SllL => cpu.sll_reg(RegisterCode::L),
-            SllA => cpu.sll_reg(RegisterCode::A),
+            SllB => {
+                bits_op.pre_operate(cpu, RegisterCode::B);
+                cpu.sll_reg(RegisterCode::B);
+                bits_op.post_operate(cpu, RegisterCode::B);
+            }
+            SllC => {
+                bits_op.pre_operate(cpu, RegisterCode::C);
+                cpu.sll_reg(RegisterCode::C);
+                bits_op.post_operate(cpu, RegisterCode::C);
+            }
+            SllD => {
+                bits_op.pre_operate(cpu, RegisterCode::D);
+                cpu.sll_reg(RegisterCode::D);
+                bits_op.post_operate(cpu, RegisterCode::D);
+            }
+            SllE => {
+                bits_op.pre_operate(cpu, RegisterCode::E);
+                cpu.sll_reg(RegisterCode::E);
+                bits_op.post_operate(cpu, RegisterCode::E);
+            }
+            SllH => {
+                bits_op.pre_operate(cpu, RegisterCode::H);
+                cpu.sll_reg(RegisterCode::H);
+                bits_op.post_operate(cpu, RegisterCode::H);
+            }
+            SllL => {
+                bits_op.pre_operate(cpu, RegisterCode::L);
+                cpu.sll_reg(RegisterCode::L);
+                bits_op.post_operate(cpu, RegisterCode::L);
+            }
+            SllA => {
+                bits_op.pre_operate(cpu, RegisterCode::A);
+                cpu.sll_reg(RegisterCode::A);
+                bits_op.post_operate(cpu, RegisterCode::A);
+            }
             SllHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.sll_addr(addr);
             }
 
-            RrcB => cpu.rrc_reg(RegisterCode::B),
-            RrcC => cpu.rrc_reg(RegisterCode::C),
-            RrcD => cpu.rrc_reg(RegisterCode::D),
-            RrcE => cpu.rrc_reg(RegisterCode::E),
-            RrcH => cpu.rrc_reg(RegisterCode::H),
-            RrcL => cpu.rrc_reg(RegisterCode::L),
-            RrcA => cpu.rrc_reg(RegisterCode::A),
+            RrcB => {
+                bits_op.pre_operate(cpu, RegisterCode::B);
+                cpu.rrc_reg(RegisterCode::B);
+                bits_op.post_operate(cpu, RegisterCode::B);
+            }
+            RrcC => {
+                bits_op.pre_operate(cpu, RegisterCode::C);
+                cpu.rrc_reg(RegisterCode::C);
+                bits_op.post_operate(cpu, RegisterCode::C);
+            }
+            RrcD => {
+                bits_op.pre_operate(cpu, RegisterCode::D);
+                cpu.rrc_reg(RegisterCode::D);
+                bits_op.post_operate(cpu, RegisterCode::D);
+            }
+            RrcE => {
+                bits_op.pre_operate(cpu, RegisterCode::E);
+                cpu.rrc_reg(RegisterCode::E);
+                bits_op.post_operate(cpu, RegisterCode::E);
+            }
+            RrcH => {
+                bits_op.pre_operate(cpu, RegisterCode::H);
+                cpu.rrc_reg(RegisterCode::H);
+                bits_op.post_operate(cpu, RegisterCode::H);
+            }
+            RrcL => {
+                bits_op.pre_operate(cpu, RegisterCode::L);
+                cpu.rrc_reg(RegisterCode::L);
+                bits_op.post_operate(cpu, RegisterCode::L);
+            }
+            RrcA => {
+                bits_op.pre_operate(cpu, RegisterCode::A);
+                cpu.rrc_reg(RegisterCode::A);
+                bits_op.post_operate(cpu, RegisterCode::A);
+            }
             RrcHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.rrc_addr(addr);
             }
 
-            RrB => cpu.rr_reg(RegisterCode::B),
-            RrC => cpu.rr_reg(RegisterCode::C),
-            RrD => cpu.rr_reg(RegisterCode::D),
-            RrE => cpu.rr_reg(RegisterCode::E),
-            RrH => cpu.rr_reg(RegisterCode::H),
-            RrL => cpu.rr_reg(RegisterCode::L),
-            RrA => cpu.rr_reg(RegisterCode::A),
+            RrB => {
+                bits_op.pre_operate(cpu, RegisterCode::B);
+                cpu.rr_reg(RegisterCode::B);
+                bits_op.post_operate(cpu, RegisterCode::B);
+            }
+            RrC => {
+                bits_op.pre_operate(cpu, RegisterCode::C);
+                cpu.rr_reg(RegisterCode::C);
+                bits_op.post_operate(cpu, RegisterCode::C);
+            }
+            RrD => {
+                bits_op.pre_operate(cpu, RegisterCode::D);
+                cpu.rr_reg(RegisterCode::D);
+                bits_op.post_operate(cpu, RegisterCode::D);
+            }
+            RrE => {
+                bits_op.pre_operate(cpu, RegisterCode::E);
+                cpu.rr_reg(RegisterCode::E);
+                bits_op.post_operate(cpu, RegisterCode::E);
+            }
+            RrH => {
+                bits_op.pre_operate(cpu, RegisterCode::H);
+                cpu.rr_reg(RegisterCode::H);
+                bits_op.post_operate(cpu, RegisterCode::H);
+            }
+            RrL => {
+                bits_op.pre_operate(cpu, RegisterCode::L);
+                cpu.rr_reg(RegisterCode::L);
+                bits_op.post_operate(cpu, RegisterCode::L);
+            }
+            RrA => {
+                bits_op.pre_operate(cpu, RegisterCode::A);
+                cpu.rr_reg(RegisterCode::A);
+                bits_op.post_operate(cpu, RegisterCode::A);
+            }
             RrHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.rr_addr(addr);
             }
 
-            SraB => cpu.sra_reg(RegisterCode::B),
-            SraC => cpu.sra_reg(RegisterCode::C),
-            SraD => cpu.sra_reg(RegisterCode::D),
-            SraE => cpu.sra_reg(RegisterCode::E),
-            SraH => cpu.sra_reg(RegisterCode::H),
-            SraL => cpu.sra_reg(RegisterCode::L),
-            SraA => cpu.sra_reg(RegisterCode::A),
+            SraB => {
+                bits_op.pre_operate(cpu, RegisterCode::B);
+                cpu.sra_reg(RegisterCode::B);
+                bits_op.post_operate(cpu, RegisterCode::B);
+            }
+            SraC => {
+                bits_op.pre_operate(cpu, RegisterCode::C);
+                cpu.sra_reg(RegisterCode::C);
+                bits_op.post_operate(cpu, RegisterCode::C);
+            }
+            SraD => {
+                bits_op.pre_operate(cpu, RegisterCode::D);
+                cpu.sra_reg(RegisterCode::D);
+                bits_op.post_operate(cpu, RegisterCode::D);
+            }
+            SraE => {
+                bits_op.pre_operate(cpu, RegisterCode::E);
+                cpu.sra_reg(RegisterCode::E);
+                bits_op.post_operate(cpu, RegisterCode::E);
+            }
+            SraH => {
+                bits_op.pre_operate(cpu, RegisterCode::H);
+                cpu.sra_reg(RegisterCode::H);
+                bits_op.post_operate(cpu, RegisterCode::H);
+            }
+            SraL => {
+                bits_op.pre_operate(cpu, RegisterCode::L);
+                cpu.sra_reg(RegisterCode::L);
+                bits_op.post_operate(cpu, RegisterCode::L);
+            }
+            SraA => {
+                bits_op.pre_operate(cpu, RegisterCode::A);
+                cpu.sra_reg(RegisterCode::A);
+                bits_op.post_operate(cpu, RegisterCode::A);
+            }
             SraFLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.sra_addr(addr);
             }
 
-            SrlB => cpu.srl_reg(RegisterCode::B),
-            SrlC => cpu.srl_reg(RegisterCode::C),
-            SrlD => cpu.srl_reg(RegisterCode::D),
-            SrlE => cpu.srl_reg(RegisterCode::E),
-            SrlH => cpu.srl_reg(RegisterCode::H),
-            SrlL => cpu.srl_reg(RegisterCode::L),
-            SrlA => cpu.srl_reg(RegisterCode::A),
+            SrlB => {
+                bits_op.pre_operate(cpu, RegisterCode::B);
+                cpu.srl_reg(RegisterCode::B);
+                bits_op.post_operate(cpu, RegisterCode::B);
+            }
+            SrlC => {
+                bits_op.pre_operate(cpu, RegisterCode::C);
+                cpu.srl_reg(RegisterCode::C);
+                bits_op.post_operate(cpu, RegisterCode::C);
+            }
+            SrlD => {
+                bits_op.pre_operate(cpu, RegisterCode::D);
+                cpu.srl_reg(RegisterCode::D);
+                bits_op.post_operate(cpu, RegisterCode::D);
+            }
+            SrlE => {
+                bits_op.pre_operate(cpu, RegisterCode::E);
+                cpu.srl_reg(RegisterCode::E);
+                bits_op.post_operate(cpu, RegisterCode::E);
+            }
+            SrlH => {
+                bits_op.pre_operate(cpu, RegisterCode::H);
+                cpu.srl_reg(RegisterCode::H);
+                bits_op.post_operate(cpu, RegisterCode::H);
+            }
+            SrlL => {
+                bits_op.pre_operate(cpu, RegisterCode::L);
+                cpu.srl_reg(RegisterCode::L);
+                bits_op.post_operate(cpu, RegisterCode::L);
+            }
+            SrlA => {
+                bits_op.pre_operate(cpu, RegisterCode::A);
+                cpu.srl_reg(RegisterCode::A);
+                bits_op.post_operate(cpu, RegisterCode::A);
+            }
             SrlHLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.srl_addr(addr);
             }
 
@@ -483,35 +715,35 @@ impl BitsOpcode {
             Bit7L => cpu.test_bit_reg(RegisterCode::L, 7),
 
             Bit0HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.test_bit_addr(addr, 0);
             }
             Bit1HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.test_bit_addr(addr, 1);
             }
             Bit2HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.test_bit_addr(addr, 2);
             }
             Bit3HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.test_bit_addr(addr, 3);
             }
             Bit4HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.test_bit_addr(addr, 4);
             }
             Bit5HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.test_bit_addr(addr, 5);
             }
             Bit6HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.test_bit_addr(addr, 6);
             }
             Bit7HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.test_bit_addr(addr, 7);
             }
 
@@ -579,35 +811,35 @@ impl BitsOpcode {
             Res7L => cpu.change_bit_reg(RegisterCode::L, 7, false),
 
             Res0HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 0, false);
             }
             Res1HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 1, false);
             }
             Res2HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 2, false);
             }
             Res3HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 3, false);
             }
             Res4HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 4, false);
             }
             Res5HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 5, false);
             }
             Res6HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 6, false);
             }
             Res7HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 7, false);
             }
 
@@ -675,35 +907,35 @@ impl BitsOpcode {
             Set7L => cpu.change_bit_reg(RegisterCode::L, 7, true),
 
             Set0HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 0, true);
             }
             Set1HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 1, true);
             }
             Set2HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 2, true);
             }
             Set3HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 3, true);
             }
             Set4HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 4, true);
             }
             Set5HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 5, true);
             }
             Set6HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 6, true);
             }
             Set7HLptr => {
-                let addr = cpu.indirect_reg_addr(RegisterCode16::HL);
+                let addr = pointer(cpu);
                 cpu.change_bit_addr(addr, 7, true);
             }
 

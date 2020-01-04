@@ -1,6 +1,9 @@
 extern crate num;
 
-use super::{bits::BitsOpcode, extended::Extnd, Cpu, RegisterCode, RegisterCode16};
+use super::{
+    bits::BitsOpcode, extended::Extnd, BitsOperator, BitsOperatorDefault, Cpu, IndexedBitsOperator,
+    RegisterCode, RegisterCode16,
+};
 
 #[repr(u8)]
 #[derive(FromPrimitive, Debug, Copy, Clone, PartialEq, Eq)]
@@ -381,6 +384,7 @@ impl Opcode {
             RegisterCode::H,
             RegisterCode::L,
             Opcode::rel_addr(RegisterCode16::HL),
+            BitsOperatorDefault {},
         );
     }
 
@@ -392,15 +396,17 @@ impl Opcode {
         move |cpu| cpu.index_addr(reg)
     }
 
-    fn operate_with<T>(
+    fn operate_with<T, U>(
         cpu: &mut Cpu,
         opcode: Opcode,
         reg: RegisterCode16,
         upper: RegisterCode,
         lower: RegisterCode,
         mut pointer: T,
+        bits_op: U,
     ) where
         T: FnMut(&mut Cpu) -> u16,
+        U: BitsOperator,
     {
         use super::Flags;
         println!("Found opcode: {:?}", opcode);
@@ -899,11 +905,36 @@ impl Opcode {
             Opcode::Rst38 => cpu.rst_lit(0x38),
 
             // Extended Opcodes
-            Opcode::Ix => unimplemented!(),
-            Opcode::Iy => unimplemented!(),
+            Opcode::Ix => {
+                cpu.queue_clock_tick(4);
+                let opcode = Opcode::from_u8(cpu.imm_addr());
+                Opcode::operate_with(
+                    cpu,
+                    opcode,
+                    RegisterCode16::IX,
+                    RegisterCode::IXh,
+                    RegisterCode::IXl,
+                    |cpu| cpu.index_addr(RegisterCode16::IX),
+                    IndexedBitsOperator::new(RegisterCode16::IX),
+                );
+            }
+
+            Opcode::Iy => {
+                cpu.queue_clock_tick(4);
+                let opcode = Opcode::from_u8(cpu.imm_addr());
+                Opcode::operate_with(
+                    cpu,
+                    opcode,
+                    RegisterCode16::IY,
+                    RegisterCode::IYh,
+                    RegisterCode::IYl,
+                    |cpu| cpu.index_addr(RegisterCode16::IY),
+                    IndexedBitsOperator::new(RegisterCode16::IY),
+                );
+            }
             Opcode::Bits => {
                 let bits_opcode = cpu.imm_addr();
-                BitsOpcode::operate_u8(cpu, bits_opcode);
+                BitsOpcode::operate_u8(cpu, bits_opcode, bits_op);
             }
             Opcode::Extd => {
                 let extd_opcode = cpu.imm_addr();
