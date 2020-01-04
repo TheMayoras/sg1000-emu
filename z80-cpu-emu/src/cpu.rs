@@ -1945,6 +1945,62 @@ impl Cpu {
     }
 }
 
+trait BitsOperator {
+    fn pre_operate(&mut self, cpu: &mut Cpu, src: RegisterCode) {}
+    fn post_operate(&mut self, cpu: &mut Cpu, src: RegisterCode) {}
+    fn pointer(&mut self, cpu: &mut Cpu) -> u16;
+    fn prepare(&mut self, cpu: &mut Cpu) {}
+}
+
+struct BitsOperatorDefault {}
+
+impl BitsOperator for BitsOperatorDefault {
+    fn pointer(&mut self, cpu: &mut Cpu) -> u16 {
+        cpu.indirect_reg_addr(RegisterCode16::HL)
+    }
+}
+
+struct IndexedBitsOperator {
+    reg: RegisterCode16,
+    addr: Option<u16>,
+}
+
+impl IndexedBitsOperator {
+    pub fn new(reg: RegisterCode16) -> IndexedBitsOperator {
+        IndexedBitsOperator { reg, addr: None }
+    }
+}
+
+impl BitsOperator for IndexedBitsOperator {
+    fn pre_operate(&mut self, cpu: &mut Cpu, src: RegisterCode) {
+        if self.addr.is_none() {
+            self.addr = Some(cpu.index_addr(self.reg));
+        }
+
+        let val = cpu.fetch(self.addr.unwrap());
+        cpu.set_reg_value(src, val as u16);
+        cpu.queue_clock_tick(4);
+    }
+
+    fn post_operate(&mut self, cpu: &mut Cpu, src: RegisterCode) {
+        if self.addr.is_none() {
+            self.addr = Some(cpu.index_addr(self.reg));
+        }
+
+        let val = cpu.reg_value(src);
+        cpu.store(self.addr.unwrap(), val);
+        cpu.queue_clock_tick(4);
+    }
+
+    fn pointer(&mut self, cpu: &mut Cpu) -> u16 {
+        cpu.index_addr(self.reg)
+    }
+
+    fn prepare(&mut self, cpu: &mut Cpu) {
+        self.addr = Some(cpu.index_addr(self.reg));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,6 +1,6 @@
 extern crate num;
 
-use super::{BitsOperator, Cpu, RegisterCode, RegisterCode16};
+use super::{BitsOperator, Cpu, RegisterCode};
 
 #[repr(u8)]
 #[derive(FromPrimitive, Debug, Copy, Clone, PartialEq, Eq)]
@@ -323,14 +323,14 @@ impl BitsOpcode {
         num::FromPrimitive::from_u8(value).unwrap()
     }
 
-    pub fn operate_u8<U>(cpu: &mut Cpu, value: u8, mut bits_op: U)
+    pub fn operate_u8<U>(cpu: &mut Cpu, value: u8, bits_op: &mut U)
     where
         U: BitsOperator,
     {
         BitsOpcode::operate(cpu, BitsOpcode::from_u8(value), bits_op);
     }
 
-    pub fn operate<U>(cpu: &mut Cpu, opcode: BitsOpcode, mut bits_op: U)
+    pub fn operate<U>(cpu: &mut Cpu, opcode: BitsOpcode, bits_op: &mut U)
     where
         U: BitsOperator,
     {
@@ -376,7 +376,7 @@ impl BitsOpcode {
                 bits_op.post_operate(cpu, RegisterCode::A);
             }
             RlcHLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.rlc_addr(addr);
             }
 
@@ -416,7 +416,7 @@ impl BitsOpcode {
                 bits_op.post_operate(cpu, RegisterCode::A);
             }
             RlHLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.rl_addr(addr);
             }
 
@@ -456,7 +456,7 @@ impl BitsOpcode {
                 bits_op.post_operate(cpu, RegisterCode::A);
             }
             SlaHLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.sla_addr(addr);
             }
 
@@ -496,7 +496,7 @@ impl BitsOpcode {
                 bits_op.post_operate(cpu, RegisterCode::A);
             }
             SllHLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.sll_addr(addr);
             }
 
@@ -536,7 +536,7 @@ impl BitsOpcode {
                 bits_op.post_operate(cpu, RegisterCode::A);
             }
             RrcHLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.rrc_addr(addr);
             }
 
@@ -576,7 +576,7 @@ impl BitsOpcode {
                 bits_op.post_operate(cpu, RegisterCode::A);
             }
             RrHLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.rr_addr(addr);
             }
 
@@ -616,7 +616,7 @@ impl BitsOpcode {
                 bits_op.post_operate(cpu, RegisterCode::A);
             }
             SraFLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.sra_addr(addr);
             }
 
@@ -656,7 +656,7 @@ impl BitsOpcode {
                 bits_op.post_operate(cpu, RegisterCode::A);
             }
             SrlHLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.srl_addr(addr);
             }
 
@@ -715,35 +715,35 @@ impl BitsOpcode {
             Bit7L => cpu.test_bit_reg(RegisterCode::L, 7),
 
             Bit0HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.test_bit_addr(addr, 0);
             }
             Bit1HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.test_bit_addr(addr, 1);
             }
             Bit2HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.test_bit_addr(addr, 2);
             }
             Bit3HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.test_bit_addr(addr, 3);
             }
             Bit4HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.test_bit_addr(addr, 4);
             }
             Bit5HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.test_bit_addr(addr, 5);
             }
             Bit6HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.test_bit_addr(addr, 6);
             }
             Bit7HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.test_bit_addr(addr, 7);
             }
 
@@ -811,35 +811,35 @@ impl BitsOpcode {
             Res7L => cpu.change_bit_reg(RegisterCode::L, 7, false),
 
             Res0HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 0, false);
             }
             Res1HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 1, false);
             }
             Res2HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 2, false);
             }
             Res3HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 3, false);
             }
             Res4HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 4, false);
             }
             Res5HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 5, false);
             }
             Res6HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 6, false);
             }
             Res7HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 7, false);
             }
 
@@ -907,35 +907,35 @@ impl BitsOpcode {
             Set7L => cpu.change_bit_reg(RegisterCode::L, 7, true),
 
             Set0HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 0, true);
             }
             Set1HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 1, true);
             }
             Set2HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 2, true);
             }
             Set3HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 3, true);
             }
             Set4HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 4, true);
             }
             Set5HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 5, true);
             }
             Set6HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 6, true);
             }
             Set7HLptr => {
-                let addr = pointer(cpu);
+                let addr = bits_op.pointer(cpu);
                 cpu.change_bit_addr(addr, 7, true);
             }
 

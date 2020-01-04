@@ -383,7 +383,7 @@ impl Opcode {
             RegisterCode16::HL,
             RegisterCode::H,
             RegisterCode::L,
-            Opcode::rel_addr(RegisterCode16::HL),
+            &mut Opcode::rel_addr(RegisterCode16::HL),
             BitsOperatorDefault {},
         );
     }
@@ -392,8 +392,11 @@ impl Opcode {
         move |cpu| cpu.indirect_reg_addr(reg)
     }
 
-    fn index_addr<F>(reg: RegisterCode16) -> impl FnMut(&mut Cpu) -> u16 {
-        move |cpu| cpu.index_addr(reg)
+    fn index_addr(reg: RegisterCode16) -> impl FnMut(&mut Cpu) -> u16 {
+        move |cpu| {
+            cpu.queue_clock_tick(8);
+            cpu.index_addr(reg)
+        }
     }
 
     fn operate_with<T, U>(
@@ -402,8 +405,8 @@ impl Opcode {
         reg: RegisterCode16,
         upper: RegisterCode,
         lower: RegisterCode,
-        mut pointer: T,
-        bits_op: U,
+        pointer: &mut T,
+        mut bits_op: U,
     ) where
         T: FnMut(&mut Cpu) -> u16,
         U: BitsOperator,
@@ -914,7 +917,7 @@ impl Opcode {
                     RegisterCode16::IX,
                     RegisterCode::IXh,
                     RegisterCode::IXl,
-                    |cpu| cpu.index_addr(RegisterCode16::IX),
+                    &mut Opcode::index_addr(RegisterCode16::IX),
                     IndexedBitsOperator::new(RegisterCode16::IX),
                 );
             }
@@ -928,19 +931,18 @@ impl Opcode {
                     RegisterCode16::IY,
                     RegisterCode::IYh,
                     RegisterCode::IYl,
-                    |cpu| cpu.index_addr(RegisterCode16::IY),
+                    &mut Opcode::index_addr(RegisterCode16::IY),
                     IndexedBitsOperator::new(RegisterCode16::IY),
                 );
             }
             Opcode::Bits => {
                 let bits_opcode = cpu.imm_addr();
-                BitsOpcode::operate_u8(cpu, bits_opcode, bits_op);
+                BitsOpcode::operate_u8(cpu, bits_opcode, &mut bits_op);
             }
             Opcode::Extd => {
                 let extd_opcode = cpu.imm_addr();
                 Extnd::operate_u8(cpu, extd_opcode);
             }
-            _ => panic!("Unimplemented for Opcode {:?}!", opcode),
         }
     }
 
