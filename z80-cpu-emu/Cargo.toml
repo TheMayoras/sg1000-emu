@@ -11,3 +11,5 @@ num = "0.2"
 num-derive = "0.3"
 num-traits = "0.2"
 bus = { path = "../bus" }
+piston2d-graphics = "0.35.0"
+piston2d-opengl_graphics = "0.70.0"
