@@ -12,7 +12,7 @@ use std::mem;
 
 mod bits;
 mod extended;
-pub mod opcode;
+mod opcode;
 
 const RESET: bool = false;
 const SET: bool = true;
@@ -1945,11 +1945,11 @@ impl Cpu {
     }
 }
 
-trait BitsOperator {
-    fn pre_operate(&mut self, cpu: &mut Cpu, src: RegisterCode) {}
-    fn post_operate(&mut self, cpu: &mut Cpu, src: RegisterCode) {}
-    fn pointer(&mut self, cpu: &mut Cpu) -> u16;
-    fn prepare(&mut self, cpu: &mut Cpu) {}
+pub trait BitsOperator {
+    fn pre_operate(&mut self, _cpu: &mut Cpu, _src: RegisterCode) {}
+    fn post_operate(&mut self, _cpu: &mut Cpu, _src: RegisterCode) {}
+    fn pointer(&mut self, _cpu: &mut Cpu) -> u16;
+    fn prepare(&mut self, _cpu: &mut Cpu) {}
 }
 
 struct BitsOperatorDefault {}

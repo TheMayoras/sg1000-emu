@@ -12,5 +12,9 @@ num-derive = "0.3"
 num-traits = "0.2"
 z80-cpu-emu = { path = "z80-cpu-emu" }
 bus = { path = "bus" }
+
+# graphics stuff
+piston = "0.49.0"
 piston2d-graphics = "0.35.0"
 piston2d-opengl_graphics = "0.70.0"
+pistoncore-glutin_window = "0.63.0"
