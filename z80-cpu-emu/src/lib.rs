@@ -8,7 +8,7 @@ pub mod cpu;
 #[cfg(test)]
 mod tests {
     use super::cpu::*;
-
+    
     #[rustfmt::skip]
     fn get_buf() -> Vec<u8> {
         vec![
@@ -16,7 +16,7 @@ mod tests {
             0x06, 0x01, // LD B, *
             0x80,       // Add A, B
             0x4F,       // LD C, A
-            0x3E, 0x00, // Ld A, *
+            0x3E, 0x00, // Ld A, * 
             0x90,       // Sub A, B
         ]
     }
