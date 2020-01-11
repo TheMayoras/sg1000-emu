@@ -86,7 +86,8 @@ pub struct Cpu {
     spec_reg:             [u32; 6], // contains I, R, IX, IY, PC, SP 
     halted:               bool,
     data_bus:             Bus,
-    interrupt_req:         bool,
+    pub nomask_interrupt: bool,
+    pub mask_interrupt:   bool,
 }
 
 impl Cpu {
@@ -105,7 +106,9 @@ impl Cpu {
             halted:               false,
             interrupt_count:      0,
             data_bus:             data,
-            interrupt_req:        false,
+            nomask_interrupt:     false,
+            mask_interrupt:       false,
+
         }
     }
 
@@ -453,13 +456,20 @@ impl Cpu {
         let opcode = self.next_byte();
         println!("Byte 0x{:x}", opcode);
 
-        if self.interrupt_req {
-            self.interrupt_req = false;
+        if self.nomask_interrupt {
+            self.nomask_interrupt = false;
             self.interrupt_nomask();
-        } else if self.halted {
+        } else if self.mask_interrupt && self.interrupt_count == 0 {
+            self.mask_interrupt = false;
+            self.interrupt_1();
+        } else if self.halted { 
             Opcode::operate(self, opcode::Opcode::NoOp);
         } else {
             Opcode::operate_u8(self, opcode);
+        }
+
+        if self.interrupt_count > 0 {
+            self.interrupt_count -= 1;
         }
     }
 }
@@ -1659,7 +1669,7 @@ impl Cpu {
     fn enable_intrpt(&mut self) {
         self.iff2 = true;
         self.iff1 = true;
-        self.interrupt_count = 1;
+        self.interrupt_count = 2;
 
         self.tick_clock(4);
     }
@@ -1733,7 +1743,7 @@ impl Cpu {
     }
 
     fn interrupt_1(&mut self) {
-        if self.iff1 {
+        if self.iff1 && self.interrupt_count == 0 {
             self.push_pc();
             self.set_reg_value_16(RegisterCode16::PC, 0x0038);
             self.tick_clock(8);
