@@ -22,7 +22,7 @@ impl App {
     fn render(&mut self, args: &RenderArgs) {
         use graphics::*;
 
-        const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
+        const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 0.5];
         const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
 
         let square = rectangle::square(0.0, 0.0, 50.0);
@@ -52,7 +52,7 @@ impl App {
 
 fn main() {
     // Change this to OpenGL::V2_1 if not working.
-    let opengl = OpenGL::V2_1;
+    let opengl = OpenGL::V3_2;
 
     // Create an Glutin window.
     let mut window: Window = WindowSettings::new("spinning-square", [200, 200])
