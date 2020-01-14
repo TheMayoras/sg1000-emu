@@ -1,6 +1,6 @@
 extern crate num;
 
-use super::{Cpu, RegisterCode, RegisterCode16};
+use crate::cpu::{Cpu, RegisterCode, RegisterCode16};
 
 #[repr(u8)]
 #[derive(FromPrimitive, Debug, Copy, Clone, PartialEq, Eq)]
@@ -72,7 +72,10 @@ pub enum Extnd {
 
 impl Extnd {
     pub fn from_u8(value: u8) -> Extnd {
-        num::FromPrimitive::from_u8(value).unwrap()
+        println!("Getting Extended for: 0x{:x} | ", value);
+        let op = num::FromPrimitive::from_u8(value).unwrap();
+        println!("Opcode: {:?}", op);
+        op
     }
 
     pub fn operate_u8(cpu: &mut Cpu, value: u8) {

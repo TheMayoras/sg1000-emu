@@ -1,6 +1,6 @@
 extern crate num;
 
-use super::{
+use crate::cpu::{
     bits::BitsOpcode, extended::Extnd, BitsOperator, BitsOperatorDefault, Cpu, IndexedBitsOperator,
     RegisterCode, RegisterCode16,
 };

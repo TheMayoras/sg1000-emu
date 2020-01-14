@@ -1,6 +1,6 @@
 extern crate num;
 
-use super::{BitsOperator, Cpu, RegisterCode};
+use crate::cpu::{BitsOperator, Cpu, RegisterCode};
 
 #[repr(u8)]
 #[derive(FromPrimitive, Debug, Copy, Clone, PartialEq, Eq)]

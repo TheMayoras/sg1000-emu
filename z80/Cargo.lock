@@ -121,7 +121,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
-name = "z80-cpu-emu"
+name = "z80"
 version = "0.1.0"
 dependencies = [
  "bus 0.1.0",

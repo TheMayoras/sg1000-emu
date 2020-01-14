@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 extern crate bus;
 
-use bus::bus::Bus;
+use bus::{bus::Bus, MutRef};
 use opcode::Opcode;
-use std::mem;
+use std::{cell::RefCell, mem, rc::Rc};
 
 // DONE:
 // 1). LD for main group
@@ -16,14 +16,6 @@ mod opcode;
 
 const RESET: bool = false;
 const SET: bool = true;
-
-// define registers
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum TriStateLogic {
-    On,
-    Off,
-    Disconnect,
-}
 
 // register codes
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -77,7 +69,6 @@ pub enum Flags {
 pub struct Cpu {
     clock:                u64,
     clock_queue:          i64,
-    read_write:           TriStateLogic,
     iff1:                 bool,
     iff2:                 bool,
     interrupt_count:      u8,
@@ -85,7 +76,8 @@ pub struct Cpu {
     alt_reg:              [u16; 8], // contains alternate A, F, B, C, D, E, H, L
     spec_reg:             [u32; 6], // contains I, R, IX, IY, PC, SP 
     halted:               bool,
-    data_bus:             Bus,
+    data_bus:             MutRef<Bus>,
+    io_bus:               MutRef<Bus>,
     pub nomask_interrupt: bool,
     pub mask_interrupt:   bool,
 }
@@ -93,11 +85,10 @@ pub struct Cpu {
 impl Cpu {
     #[rustfmt::skip]
     /// TODO: set buffer to point to a vector of binary file data 
-    pub fn new(data: Bus) -> Cpu {
+    pub fn new(data: &MutRef<Bus>, io: &MutRef<Bus>) -> Cpu {
         Cpu {
             clock:                0,
             clock_queue:          0,
-            read_write:           TriStateLogic::Disconnect,
             iff1:                 false,
             iff2:                 false,
             reg:                  [0; 8],
@@ -105,7 +96,8 @@ impl Cpu {
             spec_reg:             [0; 6],
             halted:               false,
             interrupt_count:      0,
-            data_bus:             data,
+            data_bus:             Rc::clone(data),
+            io_bus:               Rc::clone(io),
             nomask_interrupt:     false,
             mask_interrupt:       false,
 
@@ -117,10 +109,6 @@ impl Cpu {
     //
     pub fn clock(&self) -> u64 {
         self.clock
-    }
-
-    pub fn read_write(&self) -> TriStateLogic {
-        self.read_write
     }
 
     pub fn get_pc(&self) -> u16 {
@@ -255,12 +243,6 @@ impl Cpu {
         }
     }
 
-    // to test if we can set the read_write
-    #[cfg(test)]
-    pub fn set_read_write(&mut self, rw: TriStateLogic) {
-        self.read_write = rw;
-    }
-
     /// Push the value onto the stack.
     ///
     /// This function decrements the stack pointer and pushes the value onto the stack
@@ -303,11 +285,11 @@ impl Cpu {
     }
 
     fn fetch(&self, addr: u16) -> u8 {
-        self.data_bus.cpu_read(addr).unwrap()
+        self.data_bus.borrow().cpu_read(addr).unwrap()
     }
 
     fn store(&mut self, addr: u16, val: u8) {
-        self.data_bus.cpu_write(addr, val);
+        self.data_bus.borrow_mut().cpu_write(addr, val);
     }
 }
 
@@ -451,7 +433,10 @@ impl Cpu {
     /// Performs the next operation taken from the buffer supplied to the cpu.  
     /// This function will handle changing all internal Cpu values and will write to
     /// any necessary busses
-    pub fn do_operation(&mut self) {
+    ///
+    /// Returns the number of T-state the operation took
+    pub fn do_operation(&mut self) -> u64 {
+        let clock = self.clock;
         print!("PC: {}  |  ", self.reg_value_16(RegisterCode16::PC));
         let opcode = self.next_byte();
         println!("Byte 0x{:x}", opcode);
@@ -462,7 +447,7 @@ impl Cpu {
         } else if self.mask_interrupt && self.interrupt_count == 0 {
             self.mask_interrupt = false;
             self.interrupt_1();
-        } else if self.halted { 
+        } else if self.halted {
             Opcode::operate(self, opcode::Opcode::NoOp);
         } else {
             Opcode::operate_u8(self, opcode);
@@ -471,6 +456,8 @@ impl Cpu {
         if self.interrupt_count > 0 {
             self.interrupt_count -= 1;
         }
+
+        self.clock - clock
     }
 }
 
@@ -2014,14 +2001,19 @@ impl BitsOperator for IndexedBitsOperator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bus::{bus::*, ram::*};
+    use std::{cell::RefCell, rc::Rc};
+
     #[inline]
     fn get_cpu() -> Cpu {
-        Cpu::new(Bus::new(vec![Box::new(vec![0xab, 0xcd, 0xef])]))
+        Cpu::new(&Rc::new(RefCell::new(Bus::new(vec![Box::new(vec![
+            0xab, 0xcd, 0xef,
+        ])]))))
     }
 
     #[test]
     fn test_inc_clock() {
-        let mut cpu = Cpu::new(Bus::default());
+        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::default())));
         assert_eq!(0, cpu.clock());
 
         cpu.tick_clock(1);
@@ -2032,24 +2024,15 @@ mod tests {
     }
 
     #[test]
-    fn test_read_write() {
-        let mut cpu = Cpu::new(Bus::default());
-        assert_eq!(TriStateLogic::Disconnect, cpu.read_write());
-
-        cpu.set_read_write(TriStateLogic::On);
-        assert_eq!(TriStateLogic::On, cpu.read_write());
-    }
-
-    #[test]
     fn test_set_reg_a() {
-        let mut cpu = Cpu::new(Bus::default());
+        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::default())));
         cpu.set_reg_value(RegisterCode::A, 10);
         assert_eq!(10, cpu.reg_value(RegisterCode::A));
     }
 
     #[test]
     fn test_register_16() {
-        let mut cpu = Cpu::new(Bus::default());
+        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::default())));
         cpu.set_reg_value(RegisterCode::B, 0xBB);
         cpu.set_reg_value(RegisterCode::C, 0xCC);
         assert_eq!(0xBBCC, cpu.reg_value_16(RegisterCode16::BC));
@@ -2057,7 +2040,9 @@ mod tests {
 
     #[test]
     fn test_immediate_addressing() {
-        let mut cpu = Cpu::new(Bus::new(vec![Box::new(vec![0xab, 0xbc, 0xde])]));
+        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::new(vec![Box::new(vec![
+            0xab, 0xbc, 0xde,
+        ])]))));
 
         assert_eq!(0xab, cpu.imm_addr());
     }
@@ -2065,14 +2050,18 @@ mod tests {
     #[test]
     // note that this uses two bytes and we are in little endian order
     fn test_immediate_extended_addressing() {
-        let mut cpu = Cpu::new(Bus::new(vec![Box::new(vec![0xab, 0xcd, 0xef])]));
+        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::new(vec![Box::new(vec![
+            0xab, 0xcd, 0xef,
+        ])]))));
 
         assert_eq!(0xcdab, cpu.imm_addr_ex());
     }
 
     #[test]
     fn test_relative_addressing() {
-        let mut cpu = Cpu::new(Bus::new(vec![Box::new(vec![0xff, 0xff, 0])]));
+        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::new(vec![Box::new(vec![
+            0xff, 0xff, 0,
+        ])]))));
         assert_eq!(0, cpu.rel_addr());
 
         let pc = cpu.get_pc() as i16;
@@ -2088,7 +2077,7 @@ mod tests {
             vec[i] = (i % 0xff) as u8;
         }
 
-        let mut cpu = Cpu::new(Bus::new(vec![Box::new(vec)]));
+        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::new(vec![Box::new(vec)]))));
         // we have vec[0, 1, 2, 3, 4, ..., 0xff, 0, 1, 2, 3, 4]
         cpu.set_pc(0xf0); // 0xf0 = 240 or 0xf0 = -16
         assert_eq!(0xf1 - 16, cpu.rel_addr());

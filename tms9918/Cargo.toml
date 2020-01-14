@@ -1,24 +1,16 @@
 [package]
-name = 'sg-1000-emu'
+name = 'tms9918'
 version = '0.1.0'
 authors = ['themayoras <ben.mayoras@gmail.com>']
 edition = '2018'
 
 [dependencies]
-num = '0.2'
-num-derive = '0.3'
-num-traits = '0.2'
 piston = '0.49.0'
 piston2d-graphics = '0.35.0'
 piston2d-opengl_graphics = '0.70.0'
 pistoncore-glutin_window = '0.63.0'
+image = '0.22.3'
 piston_window = '0.105.0'
 
-[dependencies.z80]
-path = 'z80'
-
 [dependencies.bus]
-path = 'bus'
-
-[dependencies.tms9918]
-path = 'tms9918'
+path = "../bus"

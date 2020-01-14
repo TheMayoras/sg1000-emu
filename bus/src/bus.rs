@@ -1,40 +1,9 @@
-use std::vec::Vec;
-
-/// Represents an object connected to a bus
-///
-/// An object connected to a bus
-pub trait BusConnectable {
-    fn accept(&self, addr: u16) -> bool;
-    fn cpu_write(&mut self, addr: u16, data: u8) -> bool;
-    fn cpu_read(&self, addr: u16) -> u8;
-}
-
-/// A simple implementation for a vector to be connected to a bus
-///
-/// The vector accepts all addresses will resize to be able to always return a value
-impl BusConnectable for Vec<u8> {
-    #[allow(unused_variables)]
-    fn accept(&self, addr: u16) -> bool {
-        true
-    }
-
-    fn cpu_write(&mut self, addr: u16, data: u8) -> bool {
-        if self.len() < addr as usize {
-            self.resize(addr as usize + 1, 0);
-        }
-        self[addr as usize] = data;
-        true
-    }
-
-    fn cpu_read(&self, addr: u16) -> u8 {
-        let result = **self.get(addr as usize).get_or_insert(&0);
-        result
-    }
-}
+use crate::{BusConnectable, MutRef};
+use std::{cell::RefCell, rc::Rc, vec::Vec};
 
 impl Into<Bus> for Vec<u8> {
     fn into(self) -> Bus {
-        Bus::new(vec![Box::new(self)])
+        Bus::new(vec![Rc::new(RefCell::new(self))])
     }
 }
 
@@ -42,7 +11,7 @@ impl Into<Bus> for Vec<u8> {
 ///
 /// One one piece of data may be on the bus at one time
 pub struct Bus {
-    connections: Vec<Box<dyn BusConnectable>>,
+    connections: Vec<MutRef<dyn BusConnectable>>,
 }
 
 #[allow(dead_code)]
@@ -51,33 +20,33 @@ impl Bus {
         BusBuilder::new()
     }
 
-    pub fn new(connections: Vec<Box<dyn BusConnectable>>) -> Bus {
+    pub fn new(connections: Vec<MutRef<dyn BusConnectable>>) -> Bus {
         Bus { connections }
     }
 
     pub fn cpu_write(&mut self, addr: u16, data: u8) -> bool {
         self.connections
             .iter_mut()
-            .find(|conn| conn.accept(addr))
-            .map(|conn| conn.cpu_write(addr, data))
+            .find(|conn| conn.borrow().accept(addr))
+            .map(|conn| conn.borrow_mut().cpu_write(addr, data))
             .is_some()
     }
     pub fn cpu_read(&self, addr: u16) -> Option<u8> {
         self.connections
             .iter()
-            .find(|&conn| conn.accept(addr))
-            .map(|conn| conn.cpu_read(addr))
+            .find(|&conn| conn.borrow().accept(addr))
+            .map(|conn| conn.borrow_mut().cpu_read(addr))
     }
 }
 
 impl Default for Bus {
     fn default() -> Bus {
-        Bus::new(vec![Box::new(vec![])])
+        Bus::new(vec![Rc::new(RefCell::new(vec![]))])
     }
 }
 
 pub struct BusBuilder {
-    connections: Vec<Box<dyn BusConnectable>>,
+    connections: Vec<MutRef<dyn BusConnectable>>,
 }
 
 impl BusBuilder {
@@ -87,13 +56,31 @@ impl BusBuilder {
         }
     }
 
-    pub fn add<T: 'static + BusConnectable>(mut self, connection: T) -> Self {
-        self.connections.push(Box::new(connection));
+    pub fn add<T>(mut self, connection: T) -> Self
+    where
+        T: 'static + BusConnectable,
+    {
+        self.connections.push(Rc::new(RefCell::new(connection)));
+        self
+    }
+
+    pub fn add_box<T>(mut self, connection: Box<T>) -> Self
+    where
+        T: 'static + BusConnectable,
+    {
+        self.connections.push(Rc::new(RefCell::new(*connection)));
+        self
+    }
+
+    pub fn add_ref(mut self, connection: &MutRef<dyn BusConnectable>) -> Self {
+        self.connections.push(Rc::clone(connection));
         self
     }
 
     pub fn build(self) -> Bus {
-        Bus::new(self.connections)
+        Bus {
+            connections: self.connections,
+        }
     }
 }
 
