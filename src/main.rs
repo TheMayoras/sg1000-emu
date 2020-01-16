@@ -5,12 +5,13 @@ extern crate opengl_graphics;
 extern crate piston;
 extern crate z80;
 
-use bus::{bus::*, *};
+use bus::*;
 use glutin_window::GlutinWindow as Window;
 use opengl_graphics::{Filter, GlGraphics, GlyphCache, OpenGL, TextureSettings};
 use piston::event_loop::{EventSettings, Events};
 use piston::input::{ButtonEvent, RenderArgs, RenderEvent, UpdateArgs, UpdateEvent};
 use piston::window::WindowSettings;
+use piston::EventLoop;
 use piston::{Button, ButtonArgs, ButtonState, Key};
 use std::{cell::RefCell, rc::Rc, time::*};
 use z80::cpu::*;
@@ -28,12 +29,12 @@ impl App {
     fn render(&mut self, args: &RenderArgs, glyphs: &mut GlyphCache) {
         use graphics::*;
 
-        self.emulator.cpu.do_operation();
+        self.emulator.refresh();
 
         const BLACK: [f32; 4] = [0.15, 0.15, 0.15, 0.8];
         const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
         const RED: [f32; 4] = [0.8, 0.25, 0.25, 1.0];
-        const BLUE: [f32; 4] = [0.0, 0.0, 0.75, 1.0];
+        const BLUE: [f32; 4] = [0.25, 0.25, 0.75, 1.0];
 
         let (x, y) = (
             args.window_size[0] / 2.0 - 8.0 * ("Clock:".len() as f64),
@@ -50,7 +51,6 @@ impl App {
         self.previous_time = Instant::now();
 
         let data = format!("{:?}", self.data.borrow());
-        let pc = self.emulator.cpu.reg_value_16(RegisterCode16::PC);
         let mut col_count = 0;
         self.data
             .borrow()
@@ -101,7 +101,13 @@ impl App {
             let transform = transform.trans(0.0, 14.0);
 
             Text::new_color(RED, 14)
-                .draw(&format!("F:  0b{:08b}", flags), glyphs, &c.draw_state, transform, gl)
+                .draw(
+                    &format!("F:  0b{:08b}", flags),
+                    glyphs,
+                    &c.draw_state,
+                    transform,
+                    gl,
+                )
                 .unwrap();
 
             let transform = transform.trans(0.0, 14.0);
@@ -116,7 +122,7 @@ impl App {
                 )
                 .unwrap();
 
-            let transform = transform.trans(-600.0, 14.0);
+            let transform = c.transform.trans(0.0, 6.0 * 14.0);
 
             Text::new_color(BLUE, 14)
                 .draw(&data, glyphs, &c.draw_state, transform, gl)
@@ -153,19 +159,16 @@ fn main() {
     let data: Rc<RefCell<Vec<u8>>> = Rc::new(RefCell::new(vec![
         0x1e, 0x31, 0x16, 0xF2, 0x01, 0x00, 0x80, 0x61, 0x69, 0xcb, 0x38, 0xcb, 0x19, 0x09, 0xeb,
         0xed, 0x52, 0x38, 0x04, 0xeb, 0x09, 0x18, 0x05, 0x19, 0xeb, 0xb7, 0xed, 0x42, 0xcb, 0x3c,
-        0xcb, 0x1d, 0xcb, 0x38, 0xcb, 0x19, 0x30, 0xe3,
+        0xcb, 0x1d, 0xcb, 0x38, 0xcb, 0x19, 0x30, 0xe3, 0xC3, 0x00, 0x00,
     ]));
-    let connectable: Rc<RefCell<dyn BusConnectable>> =
+    let _connectable: Rc<RefCell<dyn BusConnectable>> =
         Rc::clone(&data) as Rc<RefCell<dyn BusConnectable>>;
-    // let cpu = Cpu::new(&Rc::new(RefCell::new(
-    //     Bus::builder().add_ref(&connectable).build(),
-    // )));
 
     // Change this to OpenGL::V2_1 if not working.
     let opengl = OpenGL::V2_1;
 
     // Create an Glutin window.
-    let mut window: Window = WindowSettings::new("sg-1000", [2 * 256, 2 * 192])
+    let mut window: Window = WindowSettings::new("sg-1000", [4 * 256, 4 * 192])
         .graphics_api(opengl)
         .exit_on_esc(true)
         .build()
@@ -183,7 +186,7 @@ fn main() {
         data,
     };
 
-    let mut events = Events::new(EventSettings::new());
+    let mut events = Events::new(EventSettings::new().max_fps(1000000000));
     while let Some(e) = events.next(&mut window) {
         if let Some(args) = e.render_args() {
             app.render(&args, glyphs);
@@ -194,7 +197,7 @@ fn main() {
         }
 
         if let Some(args) = e.button_args() {
-            // app.input(&args);
+            app.input(&args);
         }
     }
 }

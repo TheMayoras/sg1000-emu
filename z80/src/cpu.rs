@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 extern crate bus;
 
-use bus::{bus::Bus, MutRef};
+use bus::{bus::Bus, BusConnectable, MutRef};
 use opcode::Opcode;
 use std::{cell::RefCell, mem, rc::Rc};
 
@@ -285,7 +285,10 @@ impl Cpu {
     }
 
     fn fetch(&self, addr: u16) -> u8 {
-        self.data_bus.borrow().cpu_read(addr).unwrap()
+        self.data_bus.borrow().cpu_read(addr).expect(&format!(
+            "Attempted to fetch value at {} but found nothing!",
+            addr,
+        ))
     }
 
     fn store(&mut self, addr: u16, val: u8) {
@@ -437,9 +440,9 @@ impl Cpu {
     /// Returns the number of T-state the operation took
     pub fn do_operation(&mut self) -> u64 {
         let clock = self.clock;
-        print!("PC: {}  |  ", self.reg_value_16(RegisterCode16::PC));
+        // print!("PC: {}  |  ", self.reg_value_16(RegisterCode16::PC));
         let opcode = self.next_byte();
-        println!("Byte 0x{:x}", opcode);
+        // println!("Byte 0x{:x}", opcode);
 
         if self.nomask_interrupt {
             self.nomask_interrupt = false;
@@ -2006,14 +2009,20 @@ mod tests {
 
     #[inline]
     fn get_cpu() -> Cpu {
-        Cpu::new(&Rc::new(RefCell::new(Bus::new(vec![Box::new(vec![
-            0xab, 0xcd, 0xef,
-        ])]))))
+        Cpu::new(
+            &Rc::new(RefCell::new(Bus::new(vec![Rc::new(RefCell::new(vec![
+                0xab, 0xcd, 0xef,
+            ]))]))),
+            &Rc::new(RefCell::new(Bus::default())),
+        )
     }
 
     #[test]
     fn test_inc_clock() {
-        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::default())));
+        let mut cpu = Cpu::new(
+            &Rc::new(RefCell::new(Bus::default())),
+            &Rc::new(RefCell::new(Bus::default())),
+        );
         assert_eq!(0, cpu.clock());
 
         cpu.tick_clock(1);
@@ -2025,14 +2034,20 @@ mod tests {
 
     #[test]
     fn test_set_reg_a() {
-        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::default())));
+        let mut cpu = Cpu::new(
+            &Rc::new(RefCell::new(Bus::default())),
+            &Rc::new(RefCell::new(Bus::default())),
+        );
         cpu.set_reg_value(RegisterCode::A, 10);
         assert_eq!(10, cpu.reg_value(RegisterCode::A));
     }
 
     #[test]
     fn test_register_16() {
-        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::default())));
+        let mut cpu = Cpu::new(
+            &Rc::new(RefCell::new(Bus::default())),
+            &Rc::new(RefCell::new(Bus::default())),
+        );
         cpu.set_reg_value(RegisterCode::B, 0xBB);
         cpu.set_reg_value(RegisterCode::C, 0xCC);
         assert_eq!(0xBBCC, cpu.reg_value_16(RegisterCode16::BC));
@@ -2040,9 +2055,12 @@ mod tests {
 
     #[test]
     fn test_immediate_addressing() {
-        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::new(vec![Box::new(vec![
-            0xab, 0xbc, 0xde,
-        ])]))));
+        let mut cpu = Cpu::new(
+            &Rc::new(RefCell::new(Bus::new(vec![Rc::new(RefCell::new(vec![
+                0xab, 0xbc, 0xde,
+            ]))]))),
+            &Rc::new(RefCell::new(Bus::default())),
+        );
 
         assert_eq!(0xab, cpu.imm_addr());
     }
@@ -2050,18 +2068,24 @@ mod tests {
     #[test]
     // note that this uses two bytes and we are in little endian order
     fn test_immediate_extended_addressing() {
-        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::new(vec![Box::new(vec![
-            0xab, 0xcd, 0xef,
-        ])]))));
+        let mut cpu = Cpu::new(
+            &Rc::new(RefCell::new(Bus::new(vec![Rc::new(RefCell::new(vec![
+                0xab, 0xcd, 0xef,
+            ]))]))),
+            &Rc::new(RefCell::new(Bus::default())),
+        );
 
         assert_eq!(0xcdab, cpu.imm_addr_ex());
     }
 
     #[test]
     fn test_relative_addressing() {
-        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::new(vec![Box::new(vec![
-            0xff, 0xff, 0,
-        ])]))));
+        let mut cpu = Cpu::new(
+            &Rc::new(RefCell::new(Bus::new(vec![Rc::new(RefCell::new(vec![
+                0xff, 0xff, 0,
+            ]))]))),
+            &Rc::new(RefCell::new(Bus::default())),
+        );
         assert_eq!(0, cpu.rel_addr());
 
         let pc = cpu.get_pc() as i16;
@@ -2077,7 +2101,10 @@ mod tests {
             vec[i] = (i % 0xff) as u8;
         }
 
-        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::new(vec![Box::new(vec)]))));
+        let mut cpu = Cpu::new(
+            &Rc::new(RefCell::new(Bus::new(vec![Rc::new(RefCell::new(vec))]))),
+            &Rc::new(RefCell::new(Bus::default())),
+        );
         // we have vec[0, 1, 2, 3, 4, ..., 0xff, 0, 1, 2, 3, 4]
         cpu.set_pc(0xf0); // 0xf0 = 240 or 0xf0 = -16
         assert_eq!(0xf1 - 16, cpu.rel_addr());

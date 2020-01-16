@@ -34,7 +34,10 @@ mod tests {
     #[test]
     fn test_cpu1() {
         let buf = get_buf();
-        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::builder().add(buf).build())));
+        let mut cpu = Cpu::new(
+            &Rc::new(RefCell::new(Bus::builder().add(buf).build())),
+            &Rc::new(RefCell::new(Bus::default())),
+        );
 
         cpu.do_operation();
         cpu.do_operation();
@@ -52,7 +55,10 @@ mod tests {
     #[test]
     fn test_cpu2() {
         let buf = get_buf();
-        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::builder().add(buf).build())));
+        let mut cpu = Cpu::new(
+            &Rc::new(RefCell::new(Bus::builder().add(buf).build())),
+            &Rc::new(RefCell::new(Bus::default())),
+        );
 
         cpu.do_operation();
         cpu.do_operation();
@@ -66,9 +72,10 @@ mod tests {
         assert_eq!(0x01, cpu.reg_value(RegisterCode::B));
         assert!(cpu.flag(Flags::Carry));
 
-        let mut cpu = Cpu::new(&Rc::new(RefCell::new(
-            Bus::builder().add(get_buf2()).build(),
-        )));
+        let mut cpu = Cpu::new(
+            &Rc::new(RefCell::new(Bus::builder().add(get_buf2()).build())),
+            &Rc::new(RefCell::new(Bus::default())),
+        );
         while cpu.reg_value(RegisterCode::A) < 10 {
             cpu.do_operation();
         }
@@ -84,7 +91,10 @@ mod tests {
             0xcb, 0x3c, 0xcb, 0x1d, 0xcb, 0x38, 0xcb, 0x19, 0x30, 0xe3,
         ];
 
-        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::builder().add(buf).build())));
+        let mut cpu = Cpu::new(
+            &Rc::new(RefCell::new(Bus::builder().add(buf).build())),
+            &Rc::new(RefCell::new(Bus::default())),
+        );
 
         while cpu.next_byte_no_inc() != 0 {
             cpu.do_operation();
@@ -101,17 +111,20 @@ mod tests {
             0xcb, 0x3c, 0xcb, 0x1d, 0xcb, 0x38, 0xcb, 0x19, 0x30, 0xe3,
         ];
 
-        let mut cpu = Cpu::new(&Rc::new(RefCell::new(
-            Bus::builder()
-                .add(
-                    Ram::builder()
-                        .data(buf)
-                        .size(0xFF)
-                        .map(MemoryMap::from(0xFFF..0xFFFF))
-                        .build(),
-                )
-                .build(),
-        )));
+        let mut cpu = Cpu::new(
+            &Rc::new(RefCell::new(
+                Bus::builder()
+                    .add(
+                        Ram::builder()
+                            .data(buf)
+                            .size(0xFF)
+                            .map(MemoryMap::from(0x00..0xFFFF))
+                            .build(),
+                    )
+                    .build(),
+            )),
+            &Rc::new(RefCell::new(Bus::default())),
+        );
 
         while cpu.next_byte_no_inc() != 0 {
             cpu.do_operation();
@@ -129,7 +142,10 @@ mod tests {
 
         println!("Buf: {:?}", buf);
 
-        let mut cpu = Cpu::new(&Rc::new(RefCell::new(Bus::builder().add(buf).build())));
+        let mut cpu = Cpu::new(
+            &Rc::new(RefCell::new(Bus::builder().add(buf).build())),
+            &Rc::new(RefCell::new(Bus::default())),
+        );
 
         while cpu.next_byte_no_inc() != 0 {
             cpu.do_operation();

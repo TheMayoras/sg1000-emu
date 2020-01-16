@@ -24,7 +24,7 @@ impl BusConnectable for Vec<u8> {
     }
 
     fn cpu_write(&mut self, addr: u16, data: u8) -> bool {
-        if self.len() < addr as usize {
+        if self.len() <= addr as usize {
             self.resize(addr as usize + 1, 0);
         }
         self[addr as usize] = data;
@@ -32,8 +32,7 @@ impl BusConnectable for Vec<u8> {
     }
 
     fn cpu_read(&self, addr: u16) -> u8 {
-        let result = **self.get(addr as usize).get_or_insert(&0);
-        result
+        **self.get(addr as usize).get_or_insert(&0)
     }
 }
 
