@@ -1,3 +1,15 @@
+[[test]]
+name = 'z80'
+path = 'libs/z80/src/lib.rs'
+
+[[test]]
+name = 'bus'
+path = 'libs/bus/src/lib.rs'
+
+[[test]]
+name = 'tms9918'
+path = 'libs/tms9918/src/lib.rs'
+
 [package]
 name = 'sg-1000-emu'
 version = '0.1.0'
@@ -13,6 +25,7 @@ piston2d-graphics = '0.35.0'
 piston2d-opengl_graphics = '0.70.0'
 pistoncore-glutin_window = '0.63.0'
 piston_window = '0.105.0'
+image = '0.22.3'
 
 [dependencies.z80]
 path = 'libs/z80'

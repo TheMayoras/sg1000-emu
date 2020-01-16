@@ -151,7 +151,11 @@ mod tests {
             .build();
 
         assert_eq!(100, ram.size);
-        assert_eq!((0..100).collect::<Vec<u8>>(), ram.data);
+        ram.data
+            .borrow()
+            .iter()
+            .zip(0..100)
+            .for_each(|(&fst, snd)| assert_eq!(fst, snd));
         assert_eq!(0, ram.memory_map.min);
         assert_eq!(5, ram.memory_map.max);
         assert_eq!(MemoryMap::from(500..505), ram.mirrors[0]);

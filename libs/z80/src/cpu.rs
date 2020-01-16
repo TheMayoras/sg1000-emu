@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 extern crate bus;
 
-use bus::{bus::Bus, BusConnectable, MutRef};
+use bus::{bus::Bus, MutRef};
 use opcode::Opcode;
-use std::{cell::RefCell, mem, rc::Rc};
+use std::{mem, rc::Rc};
 
 // DONE:
 // 1). LD for main group
@@ -2004,7 +2004,6 @@ impl BitsOperator for IndexedBitsOperator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bus::{bus::*, ram::*};
     use std::{cell::RefCell, rc::Rc};
 
     #[inline]
