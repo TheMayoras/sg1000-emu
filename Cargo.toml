@@ -1,15 +1,3 @@
-[[test]]
-name = 'z80'
-path = 'z80'
-
-[[test]]
-name = 'bus'
-path = 'bus'
-
-[[test]]
-name = 'tms9918'
-path = 'tms9918'
-
 [package]
 name = 'sg-1000-emu'
 version = '0.1.0'
@@ -27,10 +15,10 @@ pistoncore-glutin_window = '0.63.0'
 piston_window = '0.105.0'
 
 [dependencies.z80]
-path = 'z80'
+path = 'libs/z80'
 
 [dependencies.bus]
-path = 'bus'
+path = 'libs/bus'
 
 [dependencies.tms9918]
-path = 'tms9918'
+path = 'libs/tms9918'
