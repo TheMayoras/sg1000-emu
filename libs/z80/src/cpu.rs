@@ -109,14 +109,17 @@ impl Cpu {
     //
     // getters
     //
+    #[inline]
     pub fn clock(&self) -> u64 {
         self.clock
     }
 
+    #[inline]
     pub fn get_pc(&self) -> u16 {
         self.reg_value_16(RegisterCode16::PC)
     }
 
+    #[inline]
     fn set_pc(&mut self, val: u16) {
         self.set_reg_value_16(RegisterCode16::PC, val);
     }
@@ -186,6 +189,7 @@ impl Cpu {
         (high_byte << 8) | (low_byte & 0xFF)
     }
 
+    #[inline]
     fn set_flag(&mut self, f: Flags, set: bool) {
         let mut flag = self.reg[RegisterCode::Flags as usize];
         if set {
@@ -210,10 +214,12 @@ impl Cpu {
         self.clock += n
     }
 
+    #[inline]
     fn queue_clock_tick(&mut self, n: i64) {
         self.clock_queue += n;
     }
 
+    #[inline]
     fn flush_ticks(&mut self) {
         if self.clock_queue == 0 {
             return;

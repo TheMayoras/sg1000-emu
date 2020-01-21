@@ -1,7 +1,7 @@
 use crate::Canvas;
 use im::*;
 use std::{cell::RefCell, rc::Rc};
-use bus::{MutRef, ram::Ram, bus::*};
+use bus::{MutRef, ram::Ram, bus::*, BusConnectable};
 use z80::cpu::Cpu;
 
 pub const WIDTH: u32 = 256;
@@ -28,8 +28,23 @@ pub static COLORS: [Rgba<u8>; 16] = [
 ];
 
 #[allow(dead_code)]
+#[inline]
 fn is_bit_set(val: u32, bit: u8) -> bool {
     (val >> bit) & 1 > 0
+}
+
+enum RWState {
+    None,
+    First(u8),
+}
+
+impl RWState {
+    fn add_byte(self, byte: u8) -> Self {
+        match self {
+            RWState::None => RWState::First(byte),
+            RWState::First(_) => RWState::None,
+        }
+    } 
 }
 
 #[allow(dead_code)]
@@ -45,6 +60,8 @@ pub struct Ppu {
     line:         u16,
     max_lines:    u16,
     clock_cycles: u64,
+    rw_state:     RWState,
+    cpu_addr:     u16,
 }
 
 impl Ppu {
@@ -61,6 +78,24 @@ impl Ppu {
             line:         0,
             max_lines:    254,
             clock_cycles: 0,
+            rw_state:     RWState::None,
+            cpu_addr:     0
         }
+    }
+}
+
+impl BusConnectable for Ppu {
+    fn accept(&self, addr: u16) -> bool  {
+        (addr & 0xBE) == 0xBE || 
+        (addr & 0xBF) == 0xBF
+    }
+
+    fn cpu_read(&self, addr: u16) -> u8 {
+        0
+    }
+
+    fn cpu_write(&mut self, addr: u16, val: u8) -> bool {
+
+        false
     }
 }
