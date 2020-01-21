@@ -40,12 +40,12 @@ impl App {
             args.window_size[0] / 2.0 - 8.0 * ("Clock:".len() as f64),
             args.window_size[1] / 2.0,
         );
-        let clock = self.emulator.cpu.clock();
-        let bc = self.emulator.cpu.reg_value_16(RegisterCode16::BC);
-        let de = self.emulator.cpu.reg_value_16(RegisterCode16::DE);
-        let hl = self.emulator.cpu.reg_value_16(RegisterCode16::HL);
-        let a = self.emulator.cpu.reg_value(RegisterCode::A);
-        let flags = self.emulator.cpu.reg_value(RegisterCode::Flags);
+        let clock = self.emulator.cpu.borrow().clock();
+        let bc = self.emulator.cpu.borrow().reg_value_16(RegisterCode16::BC);
+        let de = self.emulator.cpu.borrow().reg_value_16(RegisterCode16::DE);
+        let hl = self.emulator.cpu.borrow().reg_value_16(RegisterCode16::HL);
+        let a = self.emulator.cpu.borrow().reg_value(RegisterCode::A);
+        let flags = self.emulator.cpu.borrow().reg_value(RegisterCode::Flags);
 
         let duration = self.previous_time.elapsed();
         self.previous_time = Instant::now();
@@ -55,7 +55,7 @@ impl App {
         self.data
             .borrow()
             .iter()
-            .take(self.emulator.cpu.reg_value_16(RegisterCode16::PC) as usize)
+            .take(self.emulator.cpu.borrow().reg_value_16(RegisterCode16::PC) as usize)
             .for_each(|val| col_count += val.to_string().len() + 2);
 
         let col = std::iter::repeat(' ')
@@ -146,8 +146,12 @@ impl App {
         match args.button {
             Button::Keyboard(Key::Space) => match args.state {
                 ButtonState::Press => {
-                    self.emulator.cpu.do_operation();
+                    self.emulator.flip_halt_cpu();
                 }
+                _ => {}
+            },
+            Button::Keyboard(Key::Return) | Button::Keyboard(Key::Return2) => match args.state {
+                ButtonState::Press => self.emulator.cpu().borrow_mut().reset_req = true,
                 _ => {}
             },
             _ => {}

@@ -365,6 +365,10 @@ pub enum Opcode {
     Rst18 = 0xDF,
     Rst28 = 0xEF,
     Rst38 = 0xFF,
+
+    // In and Out
+    InALit = 0xDB,
+    OutALit = 0xD3,
 }
 
 impl Opcode {
@@ -414,7 +418,7 @@ impl Opcode {
         use super::Flags;
         println!("Found opcode: {:?}", opcode);
         match opcode {
-            Opcode::NoOp => {}
+            Opcode::NoOp => cpu.noop(),
 
             // ld Reg, Reg
             Opcode::LdBB => cpu.ld_reg_reg(RegisterCode::B, RegisterCode::B),
@@ -906,6 +910,9 @@ impl Opcode {
             Opcode::Rst18 => cpu.rst_lit(0x18),
             Opcode::Rst28 => cpu.rst_lit(0x28),
             Opcode::Rst38 => cpu.rst_lit(0x38),
+
+            Opcode::InALit => cpu.in_a_lit(),
+            Opcode::OutALit => cpu.out_a_lit(),
 
             // Extended Opcodes
             Opcode::Ix => {

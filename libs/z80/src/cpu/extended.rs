@@ -67,7 +67,35 @@ pub enum Extnd {
 
     Cpd = 0xA9,
     Cpdr = 0xB9,
-    // TODO: Anything IN and OUT related
+
+    // Out functions
+    OutCB = 0x41,
+    OutCD = 0x51,
+    OutCH = 0x61,
+    OutC0 = 0x71,
+    OutCC = 0x49,
+    OutCE = 0x59,
+    OutCL = 0x69,
+    OutCA = 0x79,
+
+    OutI = 0xA3,
+    OutD = 0xAB,
+    OutIR = 0xB3,
+    OutDR = 0xBB,
+
+    // In Functions
+    InCB = 0x40,
+    InCD = 0x50,
+    InCH = 0x60,
+    InC0 = 0x70,
+    InCC = 0x48,
+    InCE = 0x58,
+    InCL = 0x68,
+    InCA = 0x78,
+    InI = 0xA2,
+    InD = 0xAA,
+    InIR = 0xB2,
+    InDR = 0xBA,
 }
 
 impl Extnd {
@@ -186,6 +214,34 @@ impl Extnd {
 
             Cpd => cpu.cp_id(false),
             Cpdr => cpu.cp_id_r(false),
+
+            OutCB => cpu.out_c_reg(Some(RegisterCode::B)),
+            OutCD => cpu.out_c_reg(Some(RegisterCode::D)),
+            OutCH => cpu.out_c_reg(Some(RegisterCode::H)),
+            OutC0 => cpu.out_c_reg(None),
+            OutCC => cpu.out_c_reg(Some(RegisterCode::C)),
+            OutCE => cpu.out_c_reg(Some(RegisterCode::E)),
+            OutCL => cpu.out_c_reg(Some(RegisterCode::L)),
+            OutCA => cpu.out_c_reg(Some(RegisterCode::A)),
+
+            OutI => cpu.out_id(true),
+            OutD => cpu.out_id(false),
+            OutIR => cpu.out_id_rep(true),
+            OutDR => cpu.out_id_rep(false),
+
+            InCB => cpu.in_reg_c(Some(RegisterCode::B)),
+            InCD => cpu.in_reg_c(Some(RegisterCode::D)),
+            InCH => cpu.in_reg_c(Some(RegisterCode::H)),
+            InC0 => cpu.in_reg_c(None),
+            InCC => cpu.in_reg_c(Some(RegisterCode::C)),
+            InCE => cpu.in_reg_c(Some(RegisterCode::E)),
+            InCL => cpu.in_reg_c(Some(RegisterCode::L)),
+            InCA => cpu.in_reg_c(Some(RegisterCode::A)),
+
+            InI => cpu.in_id(true),
+            InD => cpu.in_id(false),
+            InIR => cpu.in_id_rep(true),
+            InDR => cpu.in_id_rep(false),
         }
     }
 }

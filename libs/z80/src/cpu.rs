@@ -76,6 +76,7 @@ pub struct Cpu {
     alt_reg:              [u16; 8], // contains alternate A, F, B, C, D, E, H, L
     spec_reg:             [u32; 6], // contains I, R, IX, IY, PC, SP 
     halted:               bool,
+    pub reset_req:            bool,
     data_bus:             MutRef<Bus>,
     io_bus:               MutRef<Bus>,
     pub nomask_interrupt: bool,
@@ -95,6 +96,7 @@ impl Cpu {
             alt_reg:              [0; 8],
             spec_reg:             [0; 6],
             halted:               false,
+            reset_req:            false,
             interrupt_count:      0,
             data_bus:             Rc::clone(data),
             io_bus:               Rc::clone(io),
@@ -113,6 +115,10 @@ impl Cpu {
 
     pub fn get_pc(&self) -> u16 {
         self.reg_value_16(RegisterCode16::PC)
+    }
+
+    fn set_pc(&mut self, val: u16) {
+        self.set_reg_value_16(RegisterCode16::PC, val);
     }
 
     pub fn reg_value(&self, code: RegisterCode) -> u8 {
@@ -294,6 +300,14 @@ impl Cpu {
     fn store(&mut self, addr: u16, val: u8) {
         self.data_bus.borrow_mut().cpu_write(addr, val);
     }
+
+    pub fn is_halted(&self) -> bool {
+        self.halted
+    }
+
+    pub fn reset_halt(&mut self) {
+        self.halted = false;
+    }
 }
 
 // The do_operation and related functions
@@ -439,20 +453,26 @@ impl Cpu {
     ///
     /// Returns the number of T-state the operation took
     pub fn do_operation(&mut self) -> u64 {
-        let clock = self.clock;
+        let initial_clock = self.clock;
         // print!("PC: {}  |  ", self.reg_value_16(RegisterCode16::PC));
-        let opcode = self.next_byte();
         // println!("Byte 0x{:x}", opcode);
 
-        if self.nomask_interrupt {
+        if self.reset_req {
+            self.reset_req = false;
+            self.halted = false;
+            self.reset();
+        } else if self.nomask_interrupt {
             self.nomask_interrupt = false;
+            self.halted = false;
             self.interrupt_nomask();
         } else if self.mask_interrupt && self.interrupt_count == 0 {
             self.mask_interrupt = false;
+            self.halted = false;
             self.interrupt_1();
         } else if self.halted {
             Opcode::operate(self, opcode::Opcode::NoOp);
         } else {
+            let opcode = self.next_byte();
             Opcode::operate_u8(self, opcode);
         }
 
@@ -460,12 +480,14 @@ impl Cpu {
             self.interrupt_count -= 1;
         }
 
-        self.clock - clock
+        self.clock - initial_clock
     }
 }
 
 /* ==========================================================================
  * ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^Addressing^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ *
+ *
  * vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvOperationsvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
  * =========================================================================*/
 impl Cpu {
@@ -1643,10 +1665,18 @@ impl Cpu {
         self.tick_clock(4);
     }
 
-    fn halt(&mut self) {
+    pub fn halt(&mut self) {
         self.halted = true;
 
         self.tick_clock(4);
+    }
+
+    pub fn reset(&mut self) {
+        self.set_reg_value_16(RegisterCode16::PC, 0);
+        self.set_reg_value(RegisterCode::I, 0);
+        self.set_reg_value(RegisterCode::R, 0);
+        self.iff1 = RESET;
+        self.iff2 = RESET;
     }
 
     fn disable_intrpt(&mut self) {
@@ -1934,16 +1964,135 @@ impl Cpu {
         self.store(addr, output);
         self.tick_clock(15);
     }
+
+    fn out_addr_val(&mut self, addr: u16, val: u8) {
+        self.io_bus.borrow_mut().cpu_write(addr, val);
+    }
+
+    fn out_a_lit(&mut self) {
+        let val = self.reg_value(RegisterCode::A);
+        let addr_high = self.reg_value(RegisterCode::A) as u16;
+        let addr_low = self.imm_addr() as u16;
+
+        let addr = (addr_high << 8) | addr_low;
+        self.out_addr_val(addr, val);
+        self.tick_clock(11);
+    }
+
+    fn out_c_reg(&mut self, src: Option<RegisterCode>) {
+        let val = src.map(|reg| self.reg_value(reg)).unwrap_or(0);
+        let dst = self.reg_value_16(RegisterCode16::BC);
+
+        self.out_addr_val(dst, val);
+        self.tick_clock(12);
+    }
+
+    fn out_id(&mut self, inc: bool) {
+        let mut hl = self.reg_value_16(RegisterCode16::HL);
+        let val = self.fetch(hl);
+
+        let mut b = self.reg_value(RegisterCode::B);
+        b -= if b == 0 { 0xFF } else { b - 1 };
+        self.set_reg_value(RegisterCode::B, b as u16);
+
+        let addr = self.reg_value_16(RegisterCode16::BC);
+
+        self.out_addr_val(addr, val);
+
+        if inc {
+            hl = (((hl as u32) + 1) % 0xFFFF) as u16;
+        } else {
+            hl = if hl == 0 { 0xFFFF } else { hl - 1 };
+        }
+        self.set_reg_value_16(RegisterCode16::HL, hl);
+
+        // set flags
+        self.set_flag(Flags::Zero, b == 0);
+        self.set_flag(Flags::Subtract, SET);
+        self.tick_clock(16);
+    }
+
+    fn out_id_rep(&mut self, inc: bool) {
+        self.out_id(inc);
+
+        if self.reg_value(RegisterCode::B) != 0 {
+            self.tick_clock(5);
+            let pc = self.get_pc();
+            self.set_pc(if pc < 2 { 0xFFFF - pc + 1 } else { pc - 2 });
+        }
+    }
+
+    fn in_addr(&self, addr: u16) -> u8 {
+        self.io_bus.borrow_mut().cpu_read(addr).expect(&format!(
+            "Attempting to read from IO bus at {:x} but there was no mapping for that address",
+            addr
+        ))
+    }
+
+    fn in_a_lit(&mut self) {
+        let addr_low = self.imm_addr() as u16;
+        let addr_high = self.reg_value(RegisterCode::A) as u16;
+        let addr = (addr_high << 8) | addr_low;
+        let val = self.in_addr(addr);
+
+        self.set_reg_value(RegisterCode::A, val as u16);
+        self.tick_clock(11);
+    }
+
+    /// dst is set to `Some` if we store the value to a register or `None` if it
+    /// gets ignored
+    fn in_reg_c(&mut self, dst: Option<RegisterCode>) {
+        let addr = self.reg_value_16(RegisterCode16::BC);
+
+        let val = self.in_addr(addr);
+        dst.map(|reg| self.set_reg_value(reg, val as u16));
+
+        self.set_flag(Flags::Sign, val >= 0x80);
+        self.set_flag(Flags::Zero, val == 0);
+        self.set_flag(Flags::HalfCarry, RESET);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(val.into()));
+        self.set_flag(Flags::Subtract, RESET);
+
+        self.tick_clock(12);
+    }
+
+    fn in_id(&mut self, inc: bool) {
+        let mut hl = self.reg_value_16(RegisterCode16::HL);
+
+        let mut b = self.reg_value(RegisterCode::B);
+        b -= if b == 0 { 0xFF } else { b - 1 };
+        self.set_reg_value(RegisterCode::B, b as u16);
+
+        let addr = self.reg_value_16(RegisterCode16::BC);
+
+        let val = self.in_addr(addr);
+        self.store(hl, val);
+
+        if inc {
+            hl = (((hl as u32) + 1) % 0xFFFF) as u16;
+        } else {
+            hl = if hl == 0 { 0xFFFF } else { hl - 1 };
+        }
+        self.set_reg_value_16(RegisterCode16::HL, hl);
+
+        // set flags
+        self.set_flag(Flags::Zero, b == 0);
+        self.set_flag(Flags::Subtract, SET);
+        self.tick_clock(16);
+    }
+
+    fn in_id_rep(&mut self, inc: bool) {
+        self.in_id(inc);
+
+        if self.reg_value(RegisterCode::B) != 0 {
+            self.tick_clock(5);
+            let pc = self.get_pc();
+            self.set_pc(if pc < 2 { 0xFFFF - pc + 1 } else { pc - 2 });
+        }
+    }
 }
 
 /* --------------------------------- TESTING --------------------------------- */
-
-#[cfg(test)]
-impl Cpu {
-    fn set_pc(&mut self, pc: u16) {
-        self.spec_reg[RegisterCode16::PC as usize] = pc as u32;
-    }
-}
 
 pub trait BitsOperator {
     fn pre_operate(&mut self, _cpu: &mut Cpu, _src: RegisterCode) {}

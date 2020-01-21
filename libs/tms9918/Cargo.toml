@@ -9,3 +9,6 @@ image = '0.22.3'
 
 [dependencies.bus]
 path = '../bus'
+
+[dependencies.z80]
+path = '../z80'
