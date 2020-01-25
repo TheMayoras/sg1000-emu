@@ -50,6 +50,7 @@ pub enum RegisterCode16 {
     BC,
     DE,
     HL,
+    AF,
 }
 
 #[repr(u8)]
@@ -76,7 +77,7 @@ pub struct Cpu {
     alt_reg:              [u16; 8], // contains alternate A, F, B, C, D, E, H, L
     spec_reg:             [u32; 6], // contains I, R, IX, IY, PC, SP 
     halted:               bool,
-    pub reset_req:            bool,
+    pub reset_req:        bool,
     data_bus:             MutRef<Bus>,
     io_bus:               MutRef<Bus>,
     pub nomask_interrupt: bool,
@@ -104,6 +105,13 @@ impl Cpu {
             mask_interrupt:       false,
 
         }
+    }
+
+    pub fn with_pc(data: &MutRef<Bus>, io: &MutRef<Bus>, pc: u16) -> Cpu {
+        let mut cpu = Cpu::new(data, io);
+        cpu.set_reg_value_16(RegisterCode16::PC, pc);
+
+        cpu
     }
 
     //
@@ -153,6 +161,10 @@ impl Cpu {
                 reg_high = RegisterCode::H;
                 reg_low = RegisterCode::L;
             }
+            RegisterCode16::AF => {
+                reg_high = RegisterCode::A;
+                reg_low = RegisterCode::Flags;
+            }
 
             _ => {
                 self.spec_reg[code as usize] = val as u32;
@@ -179,6 +191,10 @@ impl Cpu {
             RegisterCode16::HL => {
                 reg_high = RegisterCode::H;
                 reg_low = RegisterCode::L;
+            }
+            RegisterCode16::AF => {
+                reg_high = RegisterCode::A;
+                reg_low = RegisterCode::Flags;
             }
             _ => return self.spec_reg[code as usize] as u16,
         }
@@ -210,21 +226,16 @@ impl Cpu {
     }
 
     pub fn tick_clock(&mut self, n: u64) {
-        self.flush_ticks();
+        if self.clock_queue > 0 {
+            self.clock += self.clock_queue as u64;
+            self.clock_queue = 0;
+        }
         self.clock += n
     }
 
     #[inline]
     fn queue_clock_tick(&mut self, n: i64) {
         self.clock_queue += n;
-    }
-
-    #[inline]
-    fn flush_ticks(&mut self) {
-        if self.clock_queue == 0 {
-            return;
-        }
-        self.tick_clock(self.clock_queue as u64);
     }
 
     fn set_reg_value(&mut self, code: RegisterCode, value: u16) {
@@ -396,11 +407,11 @@ impl Cpu {
     /// can move +129 to -126 bytes
     fn rel_addr(&mut self) -> u16 {
         // cast to signed 16 bit
-        let byte = self.next_byte() as i8 as i16; // cast to i8 to convert to negative.
+        let byte = self.next_byte() as i8 as i32; // cast to i8 to convert to negative.
                                                   // cast to i16 so we can add to the pc value
 
         // cast to signed 16 bit
-        let cur_pc = self.get_pc() as i16;
+        let cur_pc = self.get_pc() as i16 as i32;
 
         // cast back to unsigned 16 bit.
         // this accurately performs the addition with a potentially negative `byte`
@@ -434,9 +445,9 @@ impl Cpu {
             );
         }
 
-        let reg_val = self.reg_value_16(register) as i16 as i32;
+        let reg_val = self.reg_value_16(register) as u32;
 
-        let displacement = self.next_byte() as i8 as i32;
+        let displacement = self.next_byte() as u32;
 
         // in case we wrap around.  this will
         ((reg_val + displacement) % 0xFFFF) as u16
@@ -539,7 +550,7 @@ impl Cpu {
     fn ld_reg_addr(&mut self, dst: RegisterCode, addr: u16) {
         let value = self.fetch(addr);
 
-        self.reg[dst as usize] = value as u16;
+        self.set_reg_value(dst, value as u16);
 
         self.tick_clock(7);
     }
@@ -589,12 +600,21 @@ impl Cpu {
         // high order byte is stored first
         self.push(((val >> 8) & 0xFF) as u8);
         self.push((val & 0xFF) as u8);
+
+        println!(
+            "Pushing Reg {:?} with the vals {}  &&  {}",
+            src,
+            ((val >> 8) & 0xFF) as u8,
+            (val & 0xFF) as u8
+        );
+
         self.tick_clock(11);
     }
 
     fn pop_reg16(&mut self, dst: RegisterCode16) {
-        let mut val = self.pop() as u16;
-        val = (val << 8) | self.pop() as u16;
+        let low = self.pop() as u16;
+        let high = self.pop() as u16;
+        let val = (high << 8) | low as u16;
 
         self.set_reg_value_16(dst, val);
         self.tick_clock(10);
@@ -962,13 +982,7 @@ impl Cpu {
         self.set_flag(Flags::Subtract, false);
         self.set_flag(Flags::Carry, false);
 
-        let mut parity = 0;
-        let mut val = result;
-        while val > 0 {
-            parity ^= val & 1;
-            val >>= 1;
-        }
-        self.set_flag(Flags::OverflowParity, parity == 0);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(result as u32));
 
         result
     }
@@ -977,7 +991,9 @@ impl Cpu {
         let val = self.reg_value(reg);
         let acc = self.reg_value(RegisterCode::A);
 
-        self.and_val_val(acc, val);
+        let result = self.and_val_val(acc, val);
+        self.set_reg_value(RegisterCode::A, result as u16);
+
         self.tick_clock(4);
     }
 
@@ -985,14 +1001,18 @@ impl Cpu {
         let val = self.fetch(addr);
         let acc = self.reg_value(RegisterCode::A);
 
-        self.and_val_val(acc, val);
+        let result = self.and_val_val(acc, val);
+        self.set_reg_value(RegisterCode::A, result as u16);
+
         self.tick_clock(7);
     }
 
     fn and_a_lit(&mut self, val: u8) {
         let acc = self.reg_value(RegisterCode::A);
 
-        self.and_val_val(acc, val);
+        let result = self.and_val_val(acc, val);
+        self.set_reg_value(RegisterCode::A, result as u16);
+
         self.tick_clock(7);
     }
 
@@ -1004,13 +1024,13 @@ impl Cpu {
         self.set_flag(Flags::Subtract, false);
         self.set_flag(Flags::Carry, false);
 
-        let mut parity = 0;
-        let mut val = result;
-        while val > 0 {
-            parity ^= val & 1;
-            val >>= 1;
-        }
-        self.set_flag(Flags::OverflowParity, parity == 0);
+        // let mut parity = 0;
+        // let mut val = result;
+        // while val > 0 {
+        //     parity ^= val & 1;
+        //     val >>= 1;
+        // }
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(result as u32));
 
         result
     }
@@ -1019,7 +1039,8 @@ impl Cpu {
         let val = self.reg_value(reg);
         let acc = self.reg_value(RegisterCode::A);
 
-        self.or_val_val(acc, val);
+        let result = self.or_val_val(acc, val);
+        self.set_reg_value(RegisterCode::A, result as u16);
         self.tick_clock(4);
     }
 
@@ -1027,14 +1048,17 @@ impl Cpu {
         let val = self.fetch(addr);
         let acc = self.reg_value(RegisterCode::A);
 
-        self.or_val_val(acc, val);
+        let result = self.or_val_val(acc, val);
+        self.set_reg_value(RegisterCode::A, result as u16);
         self.tick_clock(7);
     }
 
     fn or_a_lit(&mut self, val: u8) {
         let acc = self.reg_value(RegisterCode::A);
 
-        self.or_val_val(acc, val);
+        let result = self.or_val_val(acc, val);
+
+        self.set_reg_value(RegisterCode::A, result as u16);
         self.tick_clock(7);
     }
 
@@ -1046,13 +1070,7 @@ impl Cpu {
         self.set_flag(Flags::Subtract, false);
         self.set_flag(Flags::Carry, false);
 
-        let mut parity = 0;
-        let mut val = result;
-        while val > 0 {
-            parity ^= val & 1;
-            val >>= 1;
-        }
-        self.set_flag(Flags::OverflowParity, parity == 0);
+        self.set_flag(Flags::OverflowParity, Cpu::parity_even(result as u32));
 
         result
     }
@@ -1061,7 +1079,9 @@ impl Cpu {
         let val = self.reg_value(reg);
         let acc = self.reg_value(RegisterCode::A);
 
-        self.xor_val_val(acc, val);
+        let result = self.xor_val_val(acc, val);
+        self.set_reg_value(RegisterCode::A, result as u16);
+
         self.tick_clock(4);
     }
 
@@ -1069,14 +1089,18 @@ impl Cpu {
         let val = self.fetch(addr);
         let acc = self.reg_value(RegisterCode::A);
 
-        self.xor_val_val(acc, val);
+        let result = self.xor_val_val(acc, val);
+        self.set_reg_value(RegisterCode::A, result as u16);
+
         self.tick_clock(7);
     }
 
     fn xor_a_lit(&mut self, val: u8) {
         let acc = self.reg_value(RegisterCode::A);
 
-        self.xor_val_val(acc, val);
+        let result = self.xor_val_val(acc, val);
+        self.set_reg_value(RegisterCode::A, result as u16);
+
         self.tick_clock(7);
     }
 
@@ -1477,19 +1501,25 @@ impl Cpu {
     /// Jump to the specified address
     fn jmp(&mut self, addr: u16) {
         self.set_reg_value_16(RegisterCode16::PC, addr);
+        println!("Jumping to 0x{:x}", addr);
         self.tick_clock(10);
     }
 
     fn jmp_addr(&mut self, src: RegisterCode16) {
         let addr = self.reg_value_16(src);
         self.set_reg_value_16(RegisterCode16::PC, addr);
+        println!("Jumping to 0x{:x}", addr);
         self.tick_clock(4);
     }
 
     /// Jump to the offset specified by the next byte
     fn jmp_rel(&mut self) {
         let addr = self.rel_addr();
-
+        println!(
+            "Jumping from 0x{:x} to 0x{:x}",
+            self.reg_value_16(RegisterCode16::PC),
+            addr
+        );
         self.set_reg_value_16(RegisterCode16::PC, addr);
         self.tick_clock(12);
     }
@@ -1706,6 +1736,8 @@ impl Cpu {
         self.push_pc();
         self.set_reg_value_16(RegisterCode16::PC, addr);
 
+        println!("Calling 0x{:x}", addr);
+
         self.tick_clock(17);
     }
 
@@ -1721,10 +1753,7 @@ impl Cpu {
     }
 
     fn ret(&mut self) {
-        let low = self.pop() as u16;
-        let high = self.pop() as u16;
-
-        self.set_reg_value_16(RegisterCode16::PC, (high << 8) | low);
+        self.pop_pc();
 
         self.tick_clock(10);
     }
@@ -1998,7 +2027,7 @@ impl Cpu {
         let val = self.fetch(hl);
 
         let mut b = self.reg_value(RegisterCode::B);
-        b -= if b == 0 { 0xFF } else { b - 1 };
+        b = if b == 0 { 0xFF } else { b - 1 };
         self.set_reg_value(RegisterCode::B, b as u16);
 
         let addr = self.reg_value_16(RegisterCode16::BC);
@@ -2020,6 +2049,7 @@ impl Cpu {
 
     fn out_id_rep(&mut self, inc: bool) {
         self.out_id(inc);
+        println!("B after OutIR: {}", self.reg_value(RegisterCode::B));
 
         if self.reg_value(RegisterCode::B) != 0 {
             self.tick_clock(5);
@@ -2066,7 +2096,7 @@ impl Cpu {
         let mut hl = self.reg_value_16(RegisterCode16::HL);
 
         let mut b = self.reg_value(RegisterCode::B);
-        b -= if b == 0 { 0xFF } else { b - 1 };
+        b = if b == 0 { 0xFF } else { b - 1 };
         self.set_reg_value(RegisterCode::B, b as u16);
 
         let addr = self.reg_value_16(RegisterCode16::BC);

@@ -9,6 +9,7 @@ pub struct Ram {
     size: usize,
     memory_map: MemoryMap,
     mirrors: Vec<MemoryMap>,
+    read_only: bool,
 }
 
 impl Ram {
@@ -18,6 +19,7 @@ impl Ram {
             data: Rc::new(RefCell::new(Vec::with_capacity(size))),
             memory_map,
             mirrors: vec![],
+            read_only: false,
         }
     }
 
@@ -28,6 +30,7 @@ impl Ram {
     ///     memory_map: min = 0 max = 0xFFFF
     ///     mirrors:    empty vec
     ///     data:       Vec of size with all values 0
+    ///     read_only:  false
     pub fn builder() -> RamBuilder {
         RamBuilder::new()
     }
@@ -46,7 +49,7 @@ impl BusConnectable for Ram {
         self.mirrors.iter().find(|map| map.contains(addr)).is_some()
     }
 
-    fn cpu_read(&self, addr: u16) -> u8 {
+    fn cpu_read(&mut self, addr: u16) -> u8 {
         if self.memory_map.contains(addr) {
             let index = addr - self.memory_map.min;
             return self.data.borrow()[index as usize];
@@ -60,6 +63,13 @@ impl BusConnectable for Ram {
     }
 
     fn cpu_write(&mut self, addr: u16, data: u8) -> bool {
+        if self.read_only {
+            panic!(
+                "Attempting to write to ROM at address 0x{:x} with data 0x{:x}",
+                addr, data
+            );
+        }
+
         if self.memory_map.contains(addr) {
             let index = addr - self.memory_map.min;
             self.data.borrow_mut()[index as usize] = data;
@@ -79,6 +89,7 @@ pub struct RamBuilder {
     size: Option<usize>,
     memory_map: Option<MemoryMap>,
     mirrors: Option<Vec<MemoryMap>>,
+    read_only: Option<bool>,
 }
 
 impl RamBuilder {
@@ -88,6 +99,7 @@ impl RamBuilder {
             size: None,
             memory_map: None,
             mirrors: None,
+            read_only: None,
         }
     }
 
@@ -121,6 +133,11 @@ impl RamBuilder {
         self
     }
 
+    pub fn read_only(mut self, read_only: bool) -> Self {
+        self.read_only = Some(read_only);
+        self
+    }
+
     pub fn build(self) -> Ram {
         let size = self.size.unwrap_or(MAX_SIZE);
         let data = self
@@ -133,6 +150,7 @@ impl RamBuilder {
             size,
             memory_map: self.memory_map.unwrap_or(MemoryMap::from(0..0xFFFF)),
             mirrors: self.mirrors.unwrap_or(vec![]),
+            read_only: self.read_only.unwrap_or(false),
         }
     }
 }

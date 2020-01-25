@@ -135,6 +135,10 @@ pub enum Opcode {
     LdSpLit = 0x31,
     LdSpHL = 0xF9,
 
+    // Ld reg, (lit)
+    LdALitptr = 0x3A,
+    LdHLLitptr = 0x2A,
+
     IncB = 0x04,
     IncD = 0x14,
     IncH = 0x24,
@@ -369,11 +373,23 @@ pub enum Opcode {
     // In and Out
     InALit = 0xDB,
     OutALit = 0xD3,
+
+    // Push
+    PshBC = 0xC5,
+    PshDE = 0xD5,
+    PshHL = 0xE5,
+    PshAF = 0xF5,
+
+    // Pop
+    PopBC = 0xC1,
+    PopDE = 0xD1,
+    PopHL = 0xE1,
+    PopAF = 0xF1,
 }
 
 impl Opcode {
     pub fn from_u8(value: u8) -> Opcode {
-        num::FromPrimitive::from_u8(value).unwrap()
+        num::FromPrimitive::from_u8(value).expect(&format!("Opcode not found: {:x}", value))
     }
 
     pub fn operate_u8(cpu: &mut Cpu, value: u8) {
@@ -491,7 +507,7 @@ impl Opcode {
             }
             Opcode::LdHHLptr => {
                 let addr = pointer(cpu);
-                cpu.ld_reg_addr(upper, addr)
+                cpu.ld_reg_addr(RegisterCode::H, addr)
             }
             Opcode::LdCHLptr => {
                 let addr = pointer(cpu);
@@ -503,7 +519,7 @@ impl Opcode {
             }
             Opcode::LdLHLptr => {
                 let addr = pointer(cpu);
-                cpu.ld_reg_addr(lower, addr)
+                cpu.ld_reg_addr(RegisterCode::L, addr)
             }
             Opcode::LdAHLptr => {
                 let addr = pointer(cpu);
@@ -597,9 +613,17 @@ impl Opcode {
             }
 
             Opcode::LdSpHL => {
-                cpu.ld_reg16_reg16(RegisterCode16::SP, RegisterCode16::HL);
+                cpu.ld_reg16_reg16(RegisterCode16::SP, reg);
             }
 
+            Opcode::LdALitptr => {
+                let addr = cpu.imm_addr_ex();
+                cpu.ld_reg_addr(RegisterCode::A, addr);
+            }
+            Opcode::LdHLLitptr => {
+                let addr = cpu.imm_addr_ex();
+                cpu.ld_reg16_addr(reg, addr);
+            }
             /* ------------- inc Reg ------------- */
             Opcode::IncB => cpu.inc_reg(RegisterCode::B),
             Opcode::IncD => cpu.inc_reg(RegisterCode::D),
@@ -674,7 +698,7 @@ impl Opcode {
             Opcode::AddHLBC => cpu.add_reg16_reg16(RegisterCode16::HL, RegisterCode16::BC),
             Opcode::AddHLDE => cpu.add_reg16_reg16(RegisterCode16::HL, RegisterCode16::DE),
             Opcode::AddHLHL => cpu.add_reg16_reg16(RegisterCode16::HL, RegisterCode16::HL),
-            Opcode::AddHLSP => cpu.add_reg16_reg16(RegisterCode16::HL, RegisterCode16::SP),
+            Opcode::AddHLSP => cpu.add_reg16_reg16(reg, RegisterCode16::SP),
 
             Opcode::SubAB => cpu.sub_a_reg(RegisterCode::B),
             Opcode::SubAC => cpu.sub_a_reg(RegisterCode::C),
@@ -913,6 +937,16 @@ impl Opcode {
 
             Opcode::InALit => cpu.in_a_lit(),
             Opcode::OutALit => cpu.out_a_lit(),
+
+            Opcode::PshAF => cpu.push_reg16(RegisterCode16::AF),
+            Opcode::PshBC => cpu.push_reg16(RegisterCode16::BC),
+            Opcode::PshDE => cpu.push_reg16(RegisterCode16::DE),
+            Opcode::PshHL => cpu.push_reg16(reg),
+
+            Opcode::PopBC => cpu.pop_reg16(RegisterCode16::BC),
+            Opcode::PopDE => cpu.pop_reg16(RegisterCode16::DE),
+            Opcode::PopHL => cpu.pop_reg16(reg),
+            Opcode::PopAF => cpu.pop_reg16(RegisterCode16::AF),
 
             // Extended Opcodes
             Opcode::Ix => {

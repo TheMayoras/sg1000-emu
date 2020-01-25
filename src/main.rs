@@ -1,153 +1,150 @@
 extern crate bus;
 extern crate glutin_window;
 extern crate graphics;
+extern crate image as im;
 extern crate opengl_graphics;
 extern crate piston;
 extern crate z80;
 
 use bus::*;
-use glutin_window::GlutinWindow as Window;
+use im::Rgba;
 use opengl_graphics::{Filter, GlGraphics, GlyphCache, OpenGL, TextureSettings};
 use piston::event_loop::{EventSettings, Events};
-use piston::input::{ButtonEvent, RenderArgs, RenderEvent, UpdateArgs, UpdateEvent};
+use piston::input::{ButtonEvent, UpdateArgs, UpdateEvent};
 use piston::window::WindowSettings;
 use piston::EventLoop;
-use piston::{Button, ButtonArgs, ButtonState, Key};
+use piston::{Button, ButtonArgs, ButtonState, Key, RenderEvent};
+use piston_window::*;
 use std::{cell::RefCell, rc::Rc, time::*};
-use z80::cpu::*;
 
 mod emulator;
 
 pub struct App {
     gl: GlGraphics, // OpenGL drawing backend.
-    emulator: emulator::Emulator,
+    pub emulator: emulator::Emulator,
     previous_time: Instant,
     data: MutRef<Vec<u8>>,
+    pause: bool,
 }
 
 impl App {
-    fn render(&mut self, args: &RenderArgs, glyphs: &mut GlyphCache) {
-        use graphics::*;
+    // const BLACK: [f32; 4] = [0.15, 0.15, 0.15, 0.8];
+    // const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
+    // const RED: [f32; 4] = [0.8, 0.25, 0.25, 1.0];
+    // const BLUE: [f32; 4] = [0.25, 0.25, 0.75, 1.0];
 
-        self.emulator.refresh();
+    // let (x, y) = (
+    //     args.window_size[0] / 2.0 - 8.0 * ("Clock:".len() as f64),
+    //     args.window_size[1] / 2.0,
+    // );
+    // let clock = self.emulator.cpu.borrow().clock();
+    // let bc = self.emulator.cpu.borrow().reg_value_16(RegisterCode16::BC);
+    // let de = self.emulator.cpu.borrow().reg_value_16(RegisterCode16::DE);
+    // let hl = self.emulator.cpu.borrow().reg_value_16(RegisterCode16::HL);
+    // let a = self.emulator.cpu.borrow().reg_value(RegisterCode::A);
+    // let flags = self.emulator.cpu.borrow().reg_value(RegisterCode::Flags);
 
-        const BLACK: [f32; 4] = [0.15, 0.15, 0.15, 0.8];
-        const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
-        const RED: [f32; 4] = [0.8, 0.25, 0.25, 1.0];
-        const BLUE: [f32; 4] = [0.25, 0.25, 0.75, 1.0];
+    // let duration = self.previous_time.elapsed();
+    // self.previous_time = Instant::now();
 
-        let (x, y) = (
-            args.window_size[0] / 2.0 - 8.0 * ("Clock:".len() as f64),
-            args.window_size[1] / 2.0,
-        );
-        let clock = self.emulator.cpu.borrow().clock();
-        let bc = self.emulator.cpu.borrow().reg_value_16(RegisterCode16::BC);
-        let de = self.emulator.cpu.borrow().reg_value_16(RegisterCode16::DE);
-        let hl = self.emulator.cpu.borrow().reg_value_16(RegisterCode16::HL);
-        let a = self.emulator.cpu.borrow().reg_value(RegisterCode::A);
-        let flags = self.emulator.cpu.borrow().reg_value(RegisterCode::Flags);
+    // let data = format!("{:?}", self.data.borrow());
+    // let mut col_count = 0;
+    // self.data
+    //     .borrow()
+    //     .iter()
+    //     .take(self.emulator.cpu.borrow().reg_value_16(RegisterCode16::PC) as usize)
+    //     .for_each(|val| col_count += val.to_string().len() + 2);
 
-        let duration = self.previous_time.elapsed();
-        self.previous_time = Instant::now();
+    // let col = std::iter::repeat(' ')
+    //     .take(col_count + 1)
+    //     .collect::<String>();
 
-        let data = format!("{:?}", self.data.borrow());
-        let mut col_count = 0;
-        self.data
-            .borrow()
-            .iter()
-            .take(self.emulator.cpu.borrow().reg_value_16(RegisterCode16::PC) as usize)
-            .for_each(|val| col_count += val.to_string().len() + 2);
+    // self.gl.draw(args.viewport(), |c, gl| {
+    //     // Clear the screen.
+    //     clear(BLACK, gl);
 
-        let col = std::iter::repeat(' ')
-            .take(col_count + 1)
-            .collect::<String>();
+    //     let transform = c.transform.trans(x, y);
 
-        self.gl.draw(args.viewport(), |c, gl| {
-            // Clear the screen.
-            clear(BLACK, gl);
+    //     Text::new_color(WHITE, 14)
+    //         .draw(
+    //             &format!("Clock: {}", clock),
+    //             glyphs,
+    //             &c.draw_state,
+    //             transform,
+    //             gl,
+    //         )
+    //         .unwrap();
 
-            let transform = c.transform.trans(x, y);
+    //     let transform = transform.trans(0.0, 14.0);
 
-            Text::new_color(WHITE, 14)
-                .draw(
-                    &format!("Clock: {}", clock),
-                    glyphs,
-                    &c.draw_state,
-                    transform,
-                    gl,
-                )
-                .unwrap();
+    //     Text::new_color(RED, 14)
+    //         .draw(&format!("BC: {}", bc), glyphs, &c.draw_state, transform, gl)
+    //         .unwrap();
+    //     let transform = transform.trans(0.0, 14.0);
 
-            let transform = transform.trans(0.0, 14.0);
+    //     Text::new_color(RED, 14)
+    //         .draw(&format!("DE: {}", de), glyphs, &c.draw_state, transform, gl)
+    //         .unwrap();
+    //     let transform = transform.trans(0.0, 14.0);
 
-            Text::new_color(RED, 14)
-                .draw(&format!("BC: {}", bc), glyphs, &c.draw_state, transform, gl)
-                .unwrap();
-            let transform = transform.trans(0.0, 14.0);
+    //     Text::new_color(RED, 14)
+    //         .draw(&format!("HL: {}", hl), glyphs, &c.draw_state, transform, gl)
+    //         .unwrap();
+    //     let transform = transform.trans(0.0, 14.0);
 
-            Text::new_color(RED, 14)
-                .draw(&format!("DE: {}", de), glyphs, &c.draw_state, transform, gl)
-                .unwrap();
-            let transform = transform.trans(0.0, 14.0);
+    //     Text::new_color(RED, 14)
+    //         .draw(&format!("A:  {}", a), glyphs, &c.draw_state, transform, gl)
+    //         .unwrap();
+    //     let transform = transform.trans(0.0, 14.0);
 
-            Text::new_color(RED, 14)
-                .draw(&format!("HL: {}", hl), glyphs, &c.draw_state, transform, gl)
-                .unwrap();
-            let transform = transform.trans(0.0, 14.0);
+    //     Text::new_color(RED, 14)
+    //         .draw(
+    //             &format!("F:  0b{:08b}", flags),
+    //             glyphs,
+    //             &c.draw_state,
+    //             transform,
+    //             gl,
+    //         )
+    //         .unwrap();
 
-            Text::new_color(RED, 14)
-                .draw(&format!("A:  {}", a), glyphs, &c.draw_state, transform, gl)
-                .unwrap();
-            let transform = transform.trans(0.0, 14.0);
+    //     let transform = transform.trans(0.0, 14.0);
 
-            Text::new_color(RED, 14)
-                .draw(
-                    &format!("F:  0b{:08b}", flags),
-                    glyphs,
-                    &c.draw_state,
-                    transform,
-                    gl,
-                )
-                .unwrap();
+    //     Text::new_color(BLUE, 14)
+    //         .draw(
+    //             &format!("Elapsed: {} ms", duration.as_millis()),
+    //             glyphs,
+    //             &c.draw_state,
+    //             transform,
+    //             gl,
+    //         )
+    //         .unwrap();
 
-            let transform = transform.trans(0.0, 14.0);
+    //     let transform = c.transform.trans(0.0, 6.0 * 14.0);
 
-            Text::new_color(BLUE, 14)
-                .draw(
-                    &format!("Elapsed: {} ms", duration.as_millis()),
-                    glyphs,
-                    &c.draw_state,
-                    transform,
-                    gl,
-                )
-                .unwrap();
+    //     Text::new_color(BLUE, 14)
+    //         .draw(&data, glyphs, &c.draw_state, transform, gl)
+    //         .unwrap();
 
-            let transform = c.transform.trans(0.0, 6.0 * 14.0);
+    //     let transform = transform.trans(0.0, 14.0);
 
-            Text::new_color(BLUE, 14)
-                .draw(&data, glyphs, &c.draw_state, transform, gl)
-                .unwrap();
+    //     // Text::new_color(BLUE, 14)
+    //     //     .draw(&pc.to_string(), glyphs, &c.draw_state, transform, gl)
+    //     //     .unwrap();
 
-            let transform = transform.trans(0.0, 14.0);
+    //     Text::new_color(BLUE, 14)
+    //         .draw(&format!("{}^", col), glyphs, &c.draw_state, transform, gl)
+    //         .unwrap();
+    // });
+    //  }
 
-            // Text::new_color(BLUE, 14)
-            //     .draw(&pc.to_string(), glyphs, &c.draw_state, transform, gl)
-            //     .unwrap();
-
-            Text::new_color(BLUE, 14)
-                .draw(&format!("{}^", col), glyphs, &c.draw_state, transform, gl)
-                .unwrap();
-        });
+    fn update(&mut self, _args: &UpdateArgs) {
+        //self.emulator.refresh();
     }
-
-    fn update(&mut self, _args: &UpdateArgs) {}
 
     fn input(&mut self, args: &ButtonArgs) {
         match args.button {
             Button::Keyboard(Key::Space) => match args.state {
-                ButtonState::Press => {
-                    self.emulator.flip_halt_cpu();
-                }
+                ButtonState::Press => self.pause = !self.pause,
                 _ => {}
             },
             Button::Keyboard(Key::Return) | Button::Keyboard(Key::Return2) => match args.state {
@@ -169,18 +166,23 @@ fn main() {
         Rc::clone(&data) as Rc<RefCell<dyn BusConnectable>>;
 
     // Change this to OpenGL::V2_1 if not working.
-    let opengl = OpenGL::V2_1;
+    let opengl = OpenGL::V3_2;
 
     // Create an Glutin window.
-    let mut window: Window = WindowSettings::new("sg-1000", [4 * 256, 4 * 192])
+    let mut window: PistonWindow = WindowSettings::new("sg-1000", [4 * 256, 4 * 192])
         .graphics_api(opengl)
         .exit_on_esc(true)
         .build()
         .unwrap();
 
-    let texture_settings = TextureSettings::new().filter(Filter::Nearest);
-    let ref mut glyphs = GlyphCache::new("assets/FiraMono-Regular.ttf", (), texture_settings)
-        .expect("Could not load font");
+    let mut texture_context = TextureContext {
+        factory: window.factory.clone(),
+        encoder: window.factory.create_command_buffer().into(),
+    };
+
+    // let texture_settings = TextureSettings::new().filter(Filter::Nearest);
+    // let ref mut glyphs = GlyphCache::new("assets/FiraMono-Regular.ttf", (), texture_settings)
+    //     .expect("Could not load font");
 
     // Create a new game and run it.
     let mut app = App {
@@ -188,12 +190,32 @@ fn main() {
         emulator: emulator::Emulator::new(),
         previous_time: Instant::now(),
         data,
+        pause: true,
     };
 
-    let mut events = Events::new(EventSettings::new().max_fps(1000000000));
+    let mut texture: G2dTexture = Texture::from_image(
+        &mut texture_context,
+        &app.emulator.ppu.borrow().canvas,
+        &TextureSettings::new(),
+    )
+    .unwrap();
+
+    let mut events = Events::new(EventSettings::new().max_fps(10000));
     while let Some(e) = events.next(&mut window) {
-        if let Some(args) = e.render_args() {
-            app.render(&args, glyphs);
+        if let Some(_) = e.render_args() {
+            if !app.pause {
+                app.emulator.refresh();
+            }
+            texture
+                .update(&mut texture_context, &app.emulator.ppu.borrow().canvas)
+                .unwrap();
+            window.draw_2d(&e, |c, g, device| {
+                // Update texture before rendering.
+                texture_context.encoder.flush(device);
+
+                clear([0.0, 0.0, 0.0, 1.0], g);
+                image(&texture, c.transform, g);
+            });
         }
 
         if let Some(args) = e.update_args() {

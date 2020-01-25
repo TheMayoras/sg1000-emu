@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::ops::{Range, RangeInclusive};
 
 pub mod bus;
 pub mod ram;
@@ -11,7 +11,7 @@ pub type MutRef<T> = std::rc::Rc<std::cell::RefCell<T>>;
 pub trait BusConnectable {
     fn accept(&self, addr: u16) -> bool;
     fn cpu_write(&mut self, addr: u16, data: u8) -> bool;
-    fn cpu_read(&self, addr: u16) -> u8;
+    fn cpu_read(&mut self, addr: u16) -> u8;
 }
 
 /// A simple implementation for a vector to be connected to a bus
@@ -31,7 +31,7 @@ impl BusConnectable for Vec<u8> {
         true
     }
 
-    fn cpu_read(&self, addr: u16) -> u8 {
+    fn cpu_read(&mut self, addr: u16) -> u8 {
         **self.get(addr as usize).get_or_insert(&0)
     }
 }
@@ -75,7 +75,16 @@ impl From<Range<u16>> for MemoryMap {
     fn from(range: Range<u16>) -> Self {
         MemoryMap {
             min: range.start,
-            max: range.end,
+            max: range.end - 1,
+        }
+    }
+}
+
+impl From<RangeInclusive<u16>> for MemoryMap {
+    fn from(range: RangeInclusive<u16>) -> Self {
+        MemoryMap {
+            min: *range.start(),
+            max: *range.end(),
         }
     }
 }
