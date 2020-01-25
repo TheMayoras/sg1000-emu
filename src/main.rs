@@ -138,7 +138,7 @@ impl App {
     //  }
 
     fn update(&mut self, _args: &UpdateArgs) {
-        //self.emulator.refresh();
+        self.emulator.refresh();
     }
 
     fn input(&mut self, args: &ButtonArgs) {
@@ -200,7 +200,7 @@ fn main() {
     )
     .unwrap();
 
-    let mut events = Events::new(EventSettings::new().max_fps(10000));
+    let mut events = Events::new(EventSettings::new().max_fps(60));
     while let Some(e) = events.next(&mut window) {
         if let Some(_) = e.render_args() {
             if !app.pause {
@@ -219,7 +219,7 @@ fn main() {
         }
 
         if let Some(args) = e.update_args() {
-            app.update(&args);
+            // app.update(&args);
         }
 
         if let Some(args) = e.button_args() {
