@@ -334,7 +334,7 @@ impl BitsOpcode {
     where
         U: BitsOperator,
     {
-        println!("Found Bits Opcode: {:?}", opcode);
+        //println!("Found Bits Opcode: {:?}", opcode);
 
         bits_op.prepare(cpu);
 

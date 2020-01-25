@@ -510,7 +510,7 @@ impl Cpu {
 impl Cpu {
     /// No Op
     fn noop(&mut self) {
-        println!("No-Op");
+        //println!("No-Op");
         self.tick_clock(4);
     }
 
@@ -540,7 +540,7 @@ impl Cpu {
     fn ld_reg_lit(&mut self, dst: RegisterCode) {
         let literal = self.next_byte();
 
-        println!("Loading {:?} with {}", dst, literal);
+        //println!("Loading {:?} with {}", dst, literal);
 
         self.reg[dst as usize] = literal as u16;
         self.tick_clock(7);
@@ -601,12 +601,12 @@ impl Cpu {
         self.push(((val >> 8) & 0xFF) as u8);
         self.push((val & 0xFF) as u8);
 
-        println!(
-            "Pushing Reg {:?} with the vals {}  &&  {}",
-            src,
-            ((val >> 8) & 0xFF) as u8,
-            (val & 0xFF) as u8
-        );
+        //        println!(
+        //            "Pushing Reg {:?} with the vals {}  &&  {}",
+        //            src,
+        //            ((val >> 8) & 0xFF) as u8,
+        //            (val & 0xFF) as u8
+        //        );
 
         self.tick_clock(11);
     }
@@ -767,7 +767,7 @@ impl Cpu {
         let operand = self.reg_value(reg) as u16;
         let acc = self.reg_value(RegisterCode::A) as u16;
 
-        println!("Adding {:?} to {:?}", operand, acc);
+        //println!("Adding {:?} to {:?}", operand, acc);
 
         let result = self.add_val_val(acc, operand);
         self.set_reg_value(RegisterCode::A, result);
@@ -905,7 +905,7 @@ impl Cpu {
             0xFF - remainder + 1
         };
 
-        println!("Subtracting... {} - {} = {}", acc, operand, result);
+        //println!("Subtracting... {} - {} = {}", acc, operand, result);
 
         self.set_flag(Flags::Sign, result > 0x80);
         self.set_flag(Flags::Zero, result == 0);
@@ -1108,7 +1108,7 @@ impl Cpu {
         let a = self.reg_value(RegisterCode::A);
         let result = if val > a { 0xFF - val + a + 1 } else { a - val };
 
-        println!("Comparing {}, {}", a, val);
+        //println!("Comparing {}, {}", a, val);
 
         self.set_flag(Flags::Zero, result == 0);
         self.set_flag(Flags::OverflowParity, val > a);
@@ -1501,25 +1501,25 @@ impl Cpu {
     /// Jump to the specified address
     fn jmp(&mut self, addr: u16) {
         self.set_reg_value_16(RegisterCode16::PC, addr);
-        println!("Jumping to 0x{:x}", addr);
+        //println!("Jumping to 0x{:x}", addr);
         self.tick_clock(10);
     }
 
     fn jmp_addr(&mut self, src: RegisterCode16) {
         let addr = self.reg_value_16(src);
         self.set_reg_value_16(RegisterCode16::PC, addr);
-        println!("Jumping to 0x{:x}", addr);
+        //println!("Jumping to 0x{:x}", addr);
         self.tick_clock(4);
     }
 
     /// Jump to the offset specified by the next byte
     fn jmp_rel(&mut self) {
         let addr = self.rel_addr();
-        println!(
-            "Jumping from 0x{:x} to 0x{:x}",
-            self.reg_value_16(RegisterCode16::PC),
-            addr
-        );
+        //println!(
+        //    "Jumping from 0x{:x} to 0x{:x}",
+        //    self.reg_value_16(RegisterCode16::PC),
+        //    addr
+        //);
         self.set_reg_value_16(RegisterCode16::PC, addr);
         self.tick_clock(12);
     }
@@ -1736,7 +1736,7 @@ impl Cpu {
         self.push_pc();
         self.set_reg_value_16(RegisterCode16::PC, addr);
 
-        println!("Calling 0x{:x}", addr);
+        //println!("Calling 0x{:x}", addr);
 
         self.tick_clock(17);
     }
@@ -2049,7 +2049,7 @@ impl Cpu {
 
     fn out_id_rep(&mut self, inc: bool) {
         self.out_id(inc);
-        println!("B after OutIR: {}", self.reg_value(RegisterCode::B));
+        //println!("B after OutIR: {}", self.reg_value(RegisterCode::B));
 
         if self.reg_value(RegisterCode::B) != 0 {
             self.tick_clock(5);

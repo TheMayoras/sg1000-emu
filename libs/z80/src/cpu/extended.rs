@@ -100,9 +100,9 @@ pub enum Extnd {
 
 impl Extnd {
     pub fn from_u8(value: u8) -> Extnd {
-        println!("Getting Extended for: 0x{:x} | ", value);
+        //println!("Getting Extended for: 0x{:x} | ", value);
         let op = num::FromPrimitive::from_u8(value).unwrap();
-        println!("Opcode: {:?}", op);
+        //println!("Opcode: {:?}", op);
         op
     }
 
@@ -112,7 +112,7 @@ impl Extnd {
 
     pub fn operate(cpu: &mut Cpu, opcode: Extnd) {
         use Extnd::*;
-        println!("Found Extnd Opcode: {:?}", opcode);
+        //println!("Found Extnd Opcode: {:?}", opcode);
         match opcode {
             SbcHLBC => cpu.sbc_reg16_reg16(RegisterCode16::HL, RegisterCode16::BC),
             SbcHLDE => cpu.sbc_reg16_reg16(RegisterCode16::HL, RegisterCode16::DE),

@@ -432,7 +432,7 @@ impl Opcode {
         U: BitsOperator,
     {
         use super::Flags;
-        println!("Found opcode: {:?}", opcode);
+        //println!("Found opcode: {:?}", opcode);
         match opcode {
             Opcode::NoOp => cpu.noop(),
 

@@ -159,7 +159,7 @@ impl Ppu {
         } else if m1 && !m2 && !m3 {
             Text
         } else {
-            eprintln!("Illegal Graphics mode! M1={}, M2={}, M3={}", m1, m2, m3);
+            //eprintln!("Illegal Graphics mode! M1={}, M2={}, M3={}", m1, m2, m3);
             Text
         }
     }
@@ -200,27 +200,27 @@ impl Ppu {
             self.line %= self.max_lines;
 
             vblank = self.line == 0;
-            println!(
-                "\
-                 \
-                 \
-                 ==================== SCANNING LINE ===================\
-                 \
-                 \
-                 "
-            );
+            //println!(
+            //    "\
+            //     \
+            //     \
+            //     ==================== SCANNING LINE ===================\
+            //     \
+            //     \
+            //     "
+            //);
         }
 
         if vblank {
-            println!(
-                "
-                 
-                 
-                 ==================== SWAPPING CANVASES===================
-                 
-                 
-                 "
-            );
+            //println!(
+            //    "
+            //
+            //
+            //     ==================== SWAPPING CANVASES===================
+            //
+            //
+            //     "
+            //);
             mem::swap(&mut self.next_canvas, &mut self.canvas);
             self.next_canvas = ImageBuffer::new(
                 WIDTH * self.image_zoom as u32,
@@ -253,7 +253,7 @@ impl BusConnectable for Ppu {
     }
 
     fn cpu_read(&mut self, addr: u16) -> u8 {
-        println!("Reading address {:x} from PPU", addr);
+        //println!("Reading address {:x} from PPU", addr);
         match addr & 0xFF {
             0xBF => self.get_status_reg(),
             0xBE => self.ram_read(),
@@ -262,22 +262,22 @@ impl BusConnectable for Ppu {
     }
 
     fn cpu_write(&mut self, addr: u16, val: u8) -> bool {
-        println!(
-            "Writing val 0x{:x} (0b{:04b} {:04b}) to address 0x{:x} in PPU",
-            val,
-            (val >> 4) & 0b1111,
-            val & 0b1111,
-            addr & 0xFF,
-        );
+        //println!(
+        //    "Writing val 0x{:x} (0b{:04b} {:04b}) to address 0x{:x} in PPU",
+        //    val,
+        //    (val >> 4) & 0b1111,
+        //    val & 0b1111,
+        //    addr & 0xFF,
+        //);
         match addr & 0xFF {
             0xBE => {
                 self.ram.borrow_mut().cpu_write(self.cpu_addr, val);
-                println!(
-                    "
-                ===== WRITING 0x{:x} TO 0x{:x} IN PPU ====
-                ",
-                    val, self.cpu_addr
-                );
+                //println!(
+                //    "
+                //===== WRITING 0x{:x} TO 0x{:x} IN PPU ====
+                //",
+                //    val, self.cpu_addr
+                //);
                 self.cpu_addr += 1;
             }
             0xBF => match self.rw_state {
@@ -295,7 +295,7 @@ impl BusConnectable for Ppu {
                         if reg <= 0b111 {
                             self.registers[reg as usize] = fst;
                         }
-                        println!("Writing 0x{:02x} to register {} in PPU", fst, reg);
+                        //println!("Writing 0x{:02x} to register {} in PPU", fst, reg);
                     }
 
                     self.rw_state = RWState::None;

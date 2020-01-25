@@ -19,10 +19,10 @@ impl Emulator {
     //     0xe3, // 0xC3, 0x00, 0x00,
     // ]
     pub fn new() -> Emulator {
-        let mut zexall = File::open(
-            "D:\\Software\\SoftwareLanguages\\Rust\\sg-1000-emu\\resources\\hello_world2.sg",
-        )
-        .unwrap();
+        let mut zexall =
+            File::open("/home/bmay/dev/Software/Rust/sg-1000-emu/resources/hello_world2.sg")
+                .expect("Could not find file");
+
         let mut data = Vec::with_capacity(0xFFFF + 1);
         // zexall.seek(SeekFrom::Start(0x69)).unwrap();
         zexall.read_to_end(&mut data).unwrap();
