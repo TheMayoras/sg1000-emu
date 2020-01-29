@@ -1,0 +1,2658 @@
+;;Snake clone for Sega SG-1000
+;;by Rick Skrbina ¨2011
+;;
+;;My submission to the 2011 SMS Power! coding competition
+;;
+;;Assembles with TASM
+;;
+;;Started 	1/28/11
+;;Finished	2/22/11
+
+#define end 		.end
+#define equ		.equ
+
+;;Hardware definitions
+
+#define JOYPAD0		$dc
+#define JOYPAD1		$dd
+#define SNDPORT		$7f
+#define VDPCTRL 	$bf
+#define VDPDATA		$be
+#define VDPSTAT		$bf
+
+
+;;Tile definitions
+
+#define blank		0
+#define	zero		1
+#define	one		2
+#define	two		3
+#define	three		4
+#define	four		5
+#define	five		6
+#define	six		7
+#define	seven		8
+#define	eight		9
+#define	nine		10
+#define	LeA		11
+#define	LeB		12
+#define	LeC		13
+#define	LeD		14
+#define	LeE		15
+#define	LeF		16
+#define	LeG		17
+#define	LeH		18
+#define	LeI		19
+#define	LeJ		20
+#define	LeK		21
+#define	LeL		22
+#define	LeM		23
+#define	LeN		24
+#define	LeO		25
+#define	LeP		26
+#define	LeQ		27
+#define	LeR		28
+#define	LeS		29
+#define	LeT		30
+#define	LeU		31
+#define Fruit		32
+#define Copyright	33
+#define dash		34
+#define colon		35
+
+
+#define	SegaLogo0	40	;252
+#define	SegaLogo1	41	;253
+#define	SegaLogo2	42	;254
+#define	SegaLogo3	43	;255
+
+#define	WallP		48
+#define TopP		49
+#define ULCor		50
+#define BLCor		51
+#define URCor		52
+#define BRCor		53
+
+#define SSeg		56
+
+
+;;NoteDefines
+
+;;stored as two bytes
+;;
+;;HH0L
+
+#define Double	192
+#define Whole	96
+#define Half	48
+#define	Quater	24
+#define Eighth	12
+#define Triplet 8
+#define Sixteen	6
+
+#define gWhole	192
+#define gHalf	96
+#define gQuater	48
+#define gEighth 24
+#define gTriplet 16
+#define gSixteen 12
+
+#define Rest	$00FF
+
+#define	Bb2	$3C00	;$3C00
+#define C3	$3507
+#define D3	$2F09
+#define Eb3	$2C0E	;$2C0E
+#define F3	$2800	;$2800
+#define G3	$230A
+#define Ab3	$210A
+#define A3	$1F0C
+#define Bb3	$1D0F	;$1D0F
+#define C4	$1A0B
+#define D4	$170C
+#define Db4	$1903
+#define D4	$170C
+#define Eb4	$1607
+#define F4	$1400
+#define G4	$110D
+#define A4	$0F0E
+#define Bb4	$0F0A
+#define C5	$0D05
+#define G5	$080E
+#define Bb5	$0707
+#define D6	$050F
+
+;;RAM
+
+	.DSEG
+	.org	$C000
+
+C0NoteTimer		.block 1
+C0NotePtr		.block 1
+C1NoteTimer		.block 1
+C1NotePtr		.block 1
+RestFlag		.block 1
+GameFlags		.block 1
+;;GameFlags Notes:
+;;
+;;D0: Title Screen = 0, Game Screen = 1
+;;D1: Idle mode = 0, Game in play = 1
+;;D2: Snake Alive = 0, Snake dead = 1
+;;D3: no death noise = 0, play death noise = 1
+;;D4: No New Round = 0, Start New Round = 1
+SnakeXs			.block 64
+SnakeYs			.block 64
+SnakeLength		.block 1
+SnakeFrameCount		.block 1
+SnakeDirection		.block 1
+DirectionToChangeTo	.block 1
+DirectionChangeFlag	.block 1
+Debounce		.block 1	;1 = button pushed
+RNR			.block 2
+FruitX			.block 1
+FruitY			.block 1
+AddSegmentFlag		.block 1
+PtToDelete		.block 2
+Score			.block 4
+HighScore		.block 4
+KillSnakeTimer		.block 1
+Round			.block 2
+PointCounter		.block 1
+PointsToAdd		.block 1
+RoundB			.block 1
+FruitNoteIndex		.block 1
+FruitNoteTimer		.block 1
+
+
+
+
+	.CSEG
+	.org $0000
+	
+	di
+	im 1
+	jp Main
+	
+
+	
+	.org $0066
+;;Pause button interrupt
+	
+	retn
+	
+	
+Main
+
+	ld sp,$c7e0
+
+;;Clear volumes
+
+	call ClearVolumeRegisters
+	
+	ld bc,$0800
+	ld hl,$C000
+	ld a,0
+	
+ClearRAMLoop
+	
+	ld (hl),a
+	
+	inc hl
+	
+	dec c
+	jr nz,ClearRAMLoop
+	dec b
+	jr nz,ClearRAMLoop
+
+    
+;;Clear VRAM
+
+   	ld hl,$4000
+   	call SetVDPAddress
+
+   	ld bc,$4000    
+   	ld a,$00        
+   	
+ClearVRAMLoop:
+
+        out (VDPDATA),a 
+        dec c
+        jr nz,ClearVRAMLoop
+        dec b
+        jr nz,ClearVRAMLoop
+
+        
+;;Initialize VDP
+;;
+;;VDP Memory Map:
+;;
+;;Color Table		R3 00	$0000-$003F
+;;Sprite Attribute	R5 01	$0080-$00FF
+;;Pattern Generator	R4 01	$0800-$0FFF	;reserve 2K
+;;Sprite Pattern	R6 04	$2000-$27FF
+;;Name Table		R2 0F	$3C00-$3FFF	(1K) reserve 768b
+
+
+
+	ld hl,VDPInitial
+	ld b,VDPInitialEnd-VDPInitial
+	ld c,VDPCTRL
+	otir
+	
+	
+;;Store Tiles
+        
+        ld hl,$4800
+        call SetVDPAddress
+
+        ld hl,Font
+        ld bc,FontEnd-Font
+StoreFontLoop
+
+	ld a,(hl)
+        out (VDPDATA),a
+        
+        inc hl
+        dec bc
+        ld a,b
+        or c
+        
+        jr nz,StoreFontLoop
+                      
+             
+;;Set up color table
+        
+	call SetNormalColors
+              
+	ld a,1
+	ld (HighScore),a
+	ld (HighScore+1),a
+	ld (HighScore+2),a
+	ld (HighScore+3),a
+	
+	ld a,%11100111
+	out (SNDPORT),a
+	ld a,%00000111
+	out (SNDPORT),a
+	
+	
+  	call SetUpTitleScreen
+
+Inf:
+
+	in a,(VDPSTAT)
+	ld b,$80
+	and b
+	jr nz,VerticalBlank
+
+	jr Inf
+	
+
+VerticalBlank
+
+	ld hl,RNR
+	inc (hl)
+	
+	in a,(JOYPAD0)
+	and %00010000
+	jp nz,Button1NotPushed
+	
+	ld a,(Debounce)
+	cp $ff
+	jp z,DoneButton
+	
+	ld a,$ff
+	ld (Debounce),a
+	
+	ld a,(GameFlags)
+	and %00000001
+	jr nz,AlreadyInGameScreen
+	
+	ld a,(GameFlags)
+	or %00000001
+	ld (GameFlags),a
+	
+	ld a,2
+	ld (SnakeDirection),a
+	ld (Round),a
+	
+	dec a
+	ld (Score),a
+	ld (Score+1),a
+	ld (Score+2),a
+	ld (Score+3),a
+	ld (Round+1),a
+	
+	dec a
+	ld (SnakeFrameCount),a
+	ld (AddSegmentFlag),a
+	ld (RoundB),a
+	ld (PointCounter),a
+	ld (C0NoteTimer),a
+	ld (C1NoteTimer),a
+	ld (C0NotePtr),a
+	ld (C1NotePtr),a
+	ld (RestFlag),a
+	
+	ld a,5
+	ld (PointsToAdd),a
+	
+	call ClearNameTable
+	call ClearVolumeRegisters
+	call SetUpGameScreen
+	call ClearSnakeCoordinates
+	call InitializeSnake
+	call PlotSnake
+	
+	jr DoneButton
+	
+AlreadyInGameScreen
+
+	ld a,(GameFlags)
+	and %00000010
+	jr nz,DontSwitchOutIdle
+	
+	ld a,(GameFlags)
+	and %00000100
+	jr nz,DontSwitchOutIdle
+	
+	ld a,(GameFlags)
+	or %00000010
+	ld (GameFlags),a
+	
+	call GetNewFruitPos
+	call ClearRound
+	
+	jr DoneButton
+	
+DontSwitchOutIdle
+	
+	ld a,(GameFlags)
+	and %00000100
+	jr z,DontGoBackToTitleScreen
+	
+	call CheckForNewHighScore
+	
+	ld a,0
+	ld (GameFlags),a
+	ld (C0NoteTimer),a
+	ld (C1NoteTimer),a
+	ld (C0NotePtr),a
+	ld (C1NotePtr),a
+	ld (RestFlag),a
+	call ClearNameTable
+	call ClearVolumeRegisters
+	call SetNormalColors
+	call SetUpTitleScreen
+	
+DontGoBackToTitleScreen
+
+	jr DoneButton
+
+Button1NotPushed
+
+	ld a,0
+	ld (Debounce),a
+	
+DoneButton
+
+	ld a,(GameFlags)
+	and %00000001
+	jr nz,GameVBLANK
+
+
+	call PlayTitleScreenMusic
+		
+	
+
+CheckVBEnd
+	
+	in a,(VDPSTAT)
+	ld b,$80
+	and b
+	jp z,Inf
+	
+	jr CheckVBEnd
+	
+
+	
+GameVBLANK
+
+;;00 move right
+;;01 move left
+;;10 move down
+;;11 move up
+;;
+;;D0 up
+;;D1 down
+;;D2 left
+;;D3 right
+
+	ld a,(GameFlags)
+	and %00000100
+	jr z,SnakeNotDead
+	
+	ld a,(SnakeLength)
+	cp 0
+	call z,PlayGameOverMusic
+	
+SnakeNotDead
+
+	ld hl,PointCounter
+	inc (hl)
+
+	ld a,(PointCounter)
+	cp 60
+	jr nz,DontDecPoints
+	
+	ld a,0
+	ld (PointCounter),a
+	
+	ld hl,PointsToAdd
+	dec (hl)
+	
+	ld a,(PointsToAdd)
+	cp 0
+	jr nz,DontDecPoints
+	
+	ld a,1
+	ld (PointsToAdd),a
+	
+DontDecPoints
+
+	ld a,(GameFlags)
+	and %00010000
+	jr z,NoNewRound
+	
+	
+	ld a,(GameFlags)
+	and %11101111
+	ld (GameFlags),a
+	
+	call SetUpGameScreen
+
+
+	ld hl,Round
+	inc (hl)
+	ld a,(hl)
+	cp 11
+	jr nz,DispRoundNo
+	
+	ld a,1
+	ld (Round),a
+	ld hl,Round+1
+	inc (hl)
+	ld a,(hl)
+	cp 11
+	jr nz,DispRoundNo
+	
+	ld a,1
+	ld (Round+1),a
+	
+DispRoundNo
+
+	call ClearSnakeCoordinates
+
+
+
+	ld a,0
+	ld (SnakeFrameCount),a
+	ld (AddSegmentFlag),a
+	
+	call DisplayRound
+	call InitializeSnake
+	call PlotSnake
+	
+	ld a,2
+	ld (SnakeDirection),a
+	
+	ld a,0
+	ld (PointCounter),a
+	ld a,5
+	ld (PointsToAdd),a
+	
+NoNewRound
+
+	ld a,(GameFlags)
+	and %00000010
+	call z,DisplayRound
+	
+
+
+	ld a,(FruitX)
+	ld d,a
+	ld a,(FruitY)
+	ld e,a
+	ld bc,Fruit
+	ld a,(GameFlags)
+	and %00000010
+	call nz,PlotPoint
+
+	ld a,(GameFlags)
+	and %00000010
+	call nz,PlotSnake
+
+	ld a,(FruitX)
+	ld b,a
+	ld a,(SnakeXs)
+	cp b
+	jr nz,DoNotExtendSnake
+	
+	ld a,(FruitY)
+	ld b,a
+	ld a,(SnakeYs)
+	cp b
+	jr nz,DoNotExtendSnake
+	
+	ld a,$ff
+	ld (AddSegmentFlag),a
+	
+	call GetNewFruitPos
+	call UpdateScore
+	
+DoNotExtendSnake
+	
+
+
+
+	
+	ld e,0
+	
+	ld a,(GameFlags)
+	and %00000010
+	jr z,NoSnakeDirectionChange
+
+				
+	
+	in a,(JOYPAD0)
+	and %00000001
+	jr nz,UpNotPushed
+	
+	ld a,(SnakeDirection)
+	cp 2
+	jr z,UpNotPushed
+	
+	ld a,%00000011
+	ld (DirectionToChangeTo),a
+
+	ld e,$ff
+	
+UpNotPushed
+
+	in a,(JOYPAD0)
+	and %00000010
+	jr nz,DownNotPushed
+	
+	ld a,(SnakeDirection)
+	cp 3
+	jr z,DownNotPushed
+	
+	ld a,%00000010
+	ld (DirectionToChangeTo),a
+
+	ld e,$ff
+	
+DownNotPushed
+
+	in a,(JOYPAD0)
+	and %00000100
+	jr nz,LeftNotPushed
+	
+	ld a,(SnakeDirection)
+	cp 0
+	jr z,LeftNotPushed
+	
+	ld a,%00000001
+	ld (DirectionToChangeTo),a
+
+	ld e,$ff
+	
+LeftNotPushed
+
+	in a,(JOYPAD0)
+	and %00001000
+	jr nz,RightNotPushed
+	
+	ld a,(SnakeDirection)
+	cp 1
+	jr z,RightNotPushed
+	
+	ld a,%00000000
+	ld (DirectionToChangeTo),a
+
+	ld e,$ff
+	
+RightNotPushed
+	
+	
+NoSnakeDirectionChange
+	
+	ld a,e
+	ld (DirectionChangeFlag),a
+
+
+	ld a,(GameFlags)
+	and %00000010
+	call nz,MoveSnake
+
+	ld a,(GameFlags)
+	and %00000100
+	call nz,KillSnake
+
+	ld a,(GameFlags)
+	and %00000100
+	jr nz,BypassFruitSounds
+	
+	ld e,%10111111
+	ld a,(FruitNoteTimer)
+	cp 0
+	jr z,DontPlayFruitTone
+	
+	ld hl,FruitNoteTimer
+	dec (hl)
+	
+	ld e,%10110000
+	
+DontPlayFruitTone
+	ld a,e
+	out (SNDPORT),a
+	
+BypassFruitSounds
+
+	jp CheckVBEnd
+	
+
+
+SetVDPAddress:
+	
+	ld a,l
+	out (VDPCTRL),a
+	ld a,h
+	out (VDPCTRL),a
+	
+	ret
+	
+ClearSnakeCoordinates
+
+	ld b,64
+	ld ix,SnakeXs
+	ld iy,SnakeYs
+	
+ZeroSnakePosL
+
+	ld a,0
+	ld (ix),a
+	ld (iy),a
+	
+	inc ix
+	inc iy
+	dec b
+	ld a,b
+	cp 0
+	jr nz,ZeroSnakePosL
+	
+	ret
+	
+DeleteFruit
+
+	ld bc,blank
+	ld a,(FruitX)
+	ld d,a
+	ld a,(FruitY)
+	ld e,a
+	call PlotPoint
+
+	ret
+	
+CheckForNewHighScore
+
+	ld a,(HighScore+3)
+	ld b,a
+	ld a,(Score+3)
+	cp b
+	jr z,CheckDigit2
+	sub b
+	jp m,NoNewHighScore
+	jr NewHighScore
+	
+CheckDigit2
+
+	ld a,(HighScore+2)
+	ld b,a
+	ld a,(Score+2)
+	cp b
+	jr z,CheckDigit1
+	sub b
+	jp m,NoNewHighScore
+	jr NewHighScore
+	
+	
+CheckDigit1
+
+	ld a,(HighScore+1)
+	ld b,a
+	ld a,(Score+1)
+	cp b
+	jr z,CheckDigit0
+	sub b
+	jp m,NoNewHighScore
+	jr NewHighScore
+	
+CheckDigit0
+
+	ld a,(HighScore)
+	ld b,a
+	ld a,(Score)
+	cp b
+	jp z,NoNewHighScore
+	sub b
+	jp m,NoNewHighScore
+	
+NewHighScore
+
+	ld a,(Score+3)
+	ld (HighScore+3),a
+	ld a,(Score+2)
+	ld (HighScore+2),a
+	ld a,(Score+1)
+	ld (HighScore+1),a
+	ld a,(Score)
+	ld (HighScore),a
+	
+
+NoNewHighScore
+
+	ret
+	
+SetDeathColors
+
+        ld hl,$4000
+        call SetVDPAddress
+        
+        
+        ld a,$a1	;8c c6
+
+	out (VDPDATA),a		;text, numbers, symbols
+	out (VDPDATA),a
+	out (VDPDATA),a
+	out (VDPDATA),a
+	out (VDPDATA),a
+	
+	ld a,$4f
+	out (VDPDATA),a		;sega logo
+	
+	ld a,$41		
+	out (VDPDATA),a		;boundaries
+	
+	ld a,$c1
+	out (VDPDATA),a
+	
+	ret
+	
+SetNormalColors
+
+        ld hl,$4000
+        call SetVDPAddress
+        
+        
+        ld a,$a6	;8c c6
+
+	out (VDPDATA),a		;text, numbers, symbols
+	out (VDPDATA),a
+	out (VDPDATA),a
+	out (VDPDATA),a
+	out (VDPDATA),a
+	
+	ld a,$4f
+	out (VDPDATA),a		;sega logo
+	
+	ld a,$45		
+	out (VDPDATA),a		;boundaries
+	
+	ld a,$c6
+	out (VDPDATA),a
+	
+	ret
+	
+
+	
+KillSnake
+
+
+	ld bc,blank
+	ld a,(PtToDelete)
+	ld d,a
+	ld a,(PtToDelete+1)
+	ld e,a
+	call PlotPoint
+
+	
+	ld e,$ff
+
+	ld hl,KillSnakeTimer
+	inc (hl)
+	
+	ld a,(hl)
+	and 1
+	jr z,DontKillSegment
+	
+
+	
+	ld a,(SnakeLength)
+	cp 0
+	jr z,DontKillSegment
+	
+
+	
+	ld a,(SnakeLength)
+	ld c,a
+	ld b,0
+	ld ix,SnakeXs
+	ld iy,SnakeYs
+	add ix,bc
+	add iy,bc
+	
+	ld a,(ix)
+	ld d,a
+	ld a,(iy)
+	ld e,a
+	ld bc,blank
+	call PlotPoint
+	
+	ld hl,SnakeLength
+	dec (hl)
+
+	ld e,$f0
+	
+	
+DontKillSegment
+	
+	ld a,e
+	out (SNDPORT),a
+	
+
+	ret
+	
+
+	
+GetNewFruitPos	
+
+
+
+	call RandomNumber
+	and %00011111
+	cp 24
+	jp p,GetNewFruitPos
+	ld (FruitX),a
+	
+	call RandomNumber
+	and %00001111
+	ld (FruitY),a
+	
+	ld a,(FruitX)
+	ld b,a
+	ld a,(SnakeXs)
+	cp b
+	jr nz,DontGetNewPos
+	
+	ld a,(FruitY)
+	ld b,a
+	ld a,(SnakeYs)
+	cp b
+	jr z,GetNewFruitPos
+	
+DontGetNewPos
+
+	ret
+	
+RandomNumber
+
+	ld hl,(RNR)
+	ld a,h
+	rrca
+	rrca
+	xor h
+	rrca
+	xor l
+	rrca
+	rrca
+	rrca
+	rrca
+	xor l
+	rra
+	adc hl,hl
+	jr nz,SKP
+	
+	ld hl,$733c
+SKP
+	ld a,r
+	xor l
+	ld (RNR),hl
+	
+	ret
+	
+MoveSnake
+
+	ld hl,SnakeFrameCount
+	inc (hl)
+	
+	ld ix,SnakeSpeeds
+	ld b,0
+	ld a,(RoundB)
+	ld c,a
+	add ix,bc
+	
+	ld iy,RoundLengths
+	add iy,bc
+	
+	ld a,(SnakeFrameCount)
+	cp (ix)		;10
+	jp nz,DontMoveSnake
+	
+	ld a,(AddSegmentFlag)
+	cp $ff
+	jr nz,DontAddSnakeSegment
+	
+	ld hl,SnakeLength
+	inc (hl)
+	ld a,(hl)
+	cp (iy)
+	jr nz,DontAddSnakeSegment
+	
+	ld hl,RoundB
+	inc (hl)
+	
+	ld a,(RoundB)
+	cp 4
+	jr nz,DontResetRoundB
+	
+	ld a,3
+	ld (RoundB),a
+	
+DontResetRoundB
+	
+	ld a,(GameFlags)
+	and %11111101
+	or %00010000
+	ld (GameFlags),a
+	
+	jp DontMoveSnake
+	
+DontAddSnakeSegment
+	
+	ld a,0
+	ld (SnakeFrameCount),a
+	ld (AddSegmentFlag),a
+	ld b,0
+	
+
+	
+	ld ix,SnakeXs
+	ld iy,SnakeYs
+	ld a,(SnakeLength)
+	ld c,a
+	add ix,bc
+	add iy,bc
+		
+	ld a,(ix)
+	ld (PtToDelete),a
+	ld a,(iy)
+	ld (PtToDelete+1),a
+
+	ld b,0
+	ld a,(SnakeLength)
+	ld c,a
+	dec c
+	
+	
+MoveSnakeLoop
+
+	ld ix,SnakeXs
+	add ix,bc
+	
+	ld iy,SnakeYs
+	add iy,bc
+	
+	ld a,(ix)
+	ld (ix+1),a
+	ld a,(iy)
+	ld (iy+1),a
+	
+	dec c
+	ld a,c
+	cp $ff
+	jr nz,MoveSnakeLoop
+
+;;00 move right
+;;01 move left
+;;10 move down
+;;11 move up
+	
+	ld a,(DirectionChangeFlag)
+	cp 0
+	jr z,DontChangeSDir
+	
+	ld a,(DirectionToChangeTo)
+	ld (SnakeDirection),a
+	
+DontChangeSDir
+
+	ld a,0
+	ld (DirectionChangeFlag),a
+
+
+	ld a,(SnakeDirection)
+	cp 0
+	jr nz,CheckLeft
+	
+	ld hl,SnakeXs
+	inc (hl)
+	
+CheckLeft
+
+	ld a,(SnakeDirection)
+	cp 1
+	jr nz,CheckDown
+	
+	ld hl,SnakeXs
+	dec (hl)
+	
+CheckDown
+
+	
+
+	ld a,(SnakeDirection)
+	cp 2
+	jr nz,CheckUp
+	
+	ld hl,SnakeYs
+	inc (hl)
+	
+CheckUp
+
+	ld a,(SnakeDirection)
+	cp 3
+	jr nz,DoneSnakeDirection
+	
+	ld hl,SnakeYs
+	dec (hl)
+	
+DoneSnakeDirection
+
+	ld a,(SnakeXs)
+	cp $ff
+	jr z,SnakeCrashedIntoWall
+	cp 24
+	jr z,SnakeCrashedIntoWall
+	ld a,(SnakeYs)
+	cp $ff
+	jr z,SnakeCrashedIntoWall
+	cp 16
+	jr nz,NoSnakeWallCX
+	
+	
+SnakeCrashedIntoWall
+	
+	ld a,(GameFlags)
+	and %11111101
+	or %00000100
+	ld (GameFlags),a
+	
+	call SetDeathColors
+
+NoSnakeWallCX
+
+;;snake snake collision detection
+
+	ld ix,SnakeXs+1
+	ld iy,SnakeYs+1
+	ld a,(SnakeLength)
+	ld c,a
+
+SnakeSnakeCXLoop
+
+	ld a,(SnakeXs)
+	cp (ix)
+	jr nz,NoSnakeSnakeCX
+	ld a,(SnakeYs)
+	cp (iy)
+	jr nz,NoSnakeSnakeCX
+	
+	ld a,(GameFlags)
+	and %11111101
+	or %00000100
+	ld (GameFlags),a
+	
+	call SetDeathColors
+	
+NoSnakeSnakeCX
+	
+	inc ix
+	inc iy
+	dec c
+	jr nz,SnakeSnakeCXLoop
+
+	
+	
+	ld bc,blank
+	ld a,(PtToDelete)
+	ld d,a
+	ld a,(PtToDelete+1)
+	ld e,a
+	ld a,(GameFlags)
+	and %00000010
+	call nz,PlotPoint
+
+	
+	ld a,(GameFlags)
+	and %00000010
+	call nz,PlotSnake
+
+	
+DontMoveSnake
+
+	ret
+	
+PlotSnake
+
+	ld a,(SnakeLength)
+	ld b,0
+	ld c,a
+
+PlotSnakeLoop
+
+	ld ix,SnakeXs
+	add ix,bc
+	ld a,(ix)
+	ld d,a
+	
+	ld ix,SnakeYs
+	add ix,bc
+	ld a,(ix)
+	ld e,a
+	
+	push bc
+	
+	ld bc,SSeg
+	call PlotPoint
+	
+	pop bc
+	
+	dec c
+	ld a,c
+	cp $FF
+	jr nz,PlotSnakeLoop
+	
+	ret
+	
+InitializeSnake
+
+	
+	ld a,2				
+	ld (SnakeLength),a
+	ld a,9
+	ld (SnakeYs),a
+	dec a
+	ld (SnakeYs+1),a
+	dec a
+	ld (SnakeYs+2),a
+	
+	ld a,12
+	ld (SnakeXs),a
+	ld (SnakeXs+1),a
+	ld (SnakeXs+2),a
+	
+	ret
+	
+ClearNameTable
+
+	ld hl,$7C00
+	call SetVDPAddress
+
+	ld bc,$03FF
+	ld a,0
+	
+ClearNameTableLoop
+	
+	out (VDPDATA),a
+
+	dec c
+	jr nz,ClearNameTableLoop
+	
+	dec b
+	jr nz,ClearNameTableLoop
+	
+	ret
+	
+PlayGameOverMusic:
+
+
+;;C0 sound routine
+;;
+;;Bass line
+
+
+
+	ld a,(C0NotePtr)
+	sra a
+	and %01111111
+	ld c,a
+	ld b,0
+	
+	ld hl,GOBTimes
+	add hl,bc
+	ld b,(hl)
+	
+	ld hl,C0NoteTimer
+	inc (hl)
+	ld a,(hl)
+
+	cp b
+	jr nz,DontChangeNoteg
+	
+	ld a,0
+	ld (C0NoteTimer),a
+	
+	ld hl,C0NotePtr
+	inc (hl)
+	inc (hl)
+	
+	ld a,(hl)
+	ld b,GOBNotesEnd-GOBNotes
+	cp b
+	jr nz,DontChangeNoteg
+	
+	ld a,0
+	ld (C0NotePtr),a
+	
+	
+DontChangeNoteg
+
+	
+	ld a,(C0NoteTimer)
+	cp 4
+	jp p,C0SoundOng
+	
+	ld a,%10011111
+	ld e,%11011111
+	jr C0StoreVolumeg
+	
+C0SoundOng
+
+	ld a,%10010000
+	ld e,%11010000
+C0StoreVolumeg
+	out (SNDPORT),a
+	ld a,e
+	out (SNDPORT),a
+
+
+	
+	ld b,0
+	ld hl,C0NotePtr
+	ld c,(hl)
+	
+	ld hl,GOBNotes
+	add hl,bc
+	ld a,(hl)
+	or %10000000
+	out (SNDPORT),a
+	inc hl
+	ld a,(hl)
+	out (SNDPORT),a
+	
+	ld hl,GOBNotesH
+	add hl,bc
+	ld a,(hl)
+	or %10100000
+	out (SNDPORT),a
+	inc hl
+	ld a,(hl)
+	out (SNDPORT),a
+	
+
+
+;;C1 Sound Routine (melody)
+	
+
+	ld a,(C1NotePtr)
+	sra a
+	and %01111111
+	ld c,a
+	ld b,0
+
+	ld hl,GOBMNoteTimes
+	add hl,bc
+	ld b,(hl)
+	
+	ld hl,C1NoteTimer
+	inc (hl)
+	ld a,(hl)
+
+	cp b
+	jr nz,DontChangeNote1g
+	
+	ld a,0
+	ld (C1NoteTimer),a
+	
+	ld hl,C1NotePtr
+	inc (hl)
+	inc (hl)
+	
+	ld a,(hl)
+	ld b,GOBMNotesEnd-GOBMNotes
+	cp b
+	jr nz,DontChangeNote1g
+	
+	
+	ld a,0
+	ld (C1NotePtr),a
+	ld (C1NoteTimer),a
+	ld a,$FF
+	ld (RestFlag),a
+	
+DontChangeNote1g
+
+
+
+	ld a,(RestFlag)
+	cp $ff
+	jr z,C1SoundOffg
+
+
+	ld a,(C1NoteTimer)
+	cp 4
+	jp p,C1SoundOng
+	
+C1SoundOffg
+	ld a,%10111111
+	jr C1StoreVolumeg
+	
+C1SoundOng
+
+	ld a,%10110000
+C1StoreVolumeg
+	out (SNDPORT),a
+	
+	
+	ld b,0
+	ld hl,C1NotePtr
+	ld c,(hl)
+	ld hl,GOBMNotes
+	add hl,bc
+	ld a,(hl)
+	
+	ld (RestFlag),a
+	cp $ff
+	jr z,DontStoreC1Freqg
+	
+	ld b,%10100000
+	or b
+	out (SNDPORT),a
+	inc hl
+	ld a,(hl)
+	out (SNDPORT),a
+	
+DontStoreC1Freqg
+
+	ret
+	
+PlayTitleScreenMusic
+
+
+;;C0 sound routine
+;;
+;;Bass line
+
+
+
+	ld a,(C0NotePtr)
+	sra a
+	and %01111111
+	ld c,a
+	ld b,0
+	
+	ld hl,C0NoteTimes
+	add hl,bc
+	ld b,(hl)
+	
+	ld hl,C0NoteTimer
+	inc (hl)
+	ld a,(hl)
+
+	cp b
+	jr nz,DontChangeNote
+	
+	ld a,0
+	ld (C0NoteTimer),a
+	
+	ld hl,C0NotePtr
+	inc (hl)
+	inc (hl)
+	
+	ld a,(hl)
+	ld b,C0NotesEnd-C0Notes
+	cp b
+	jr nz,DontChangeNote
+	
+	ld a,0
+	ld (C0NotePtr),a
+	
+	
+DontChangeNote
+
+	
+	ld a,(C0NoteTimer)
+	cp 4
+	jp p,C0SoundOn
+	
+	ld a,%10011111
+	jr C0StoreVolume
+	
+C0SoundOn
+
+	ld a,%10010000
+C0StoreVolume
+	out (SNDPORT),a
+
+
+	
+	ld b,0
+	ld hl,C0NotePtr
+	ld c,(hl)
+	
+	ld hl,C0Notes
+	add hl,bc
+	ld a,(hl)
+	ld b,%10000000
+	or b
+	out (SNDPORT),a
+	inc hl
+	ld a,(hl)
+	out (SNDPORT),a
+	
+
+
+;;C1 Sound Routine (melody)
+	
+
+	ld a,(C1NotePtr)
+	sra a
+	and %01111111
+	ld c,a
+	ld b,0
+	ld hl,C1NoteTimes
+	add hl,bc
+	ld b,(hl)
+	
+	ld hl,C1NoteTimer
+	inc (hl)
+	ld a,(hl)
+
+	cp b
+	jr nz,DontChangeNote1
+	
+	ld a,0
+	ld (C1NoteTimer),a
+	
+	ld hl,C1NotePtr
+	inc (hl)
+	inc (hl)
+	
+	ld a,(hl)
+	ld b,C1NotesEnd-C1Notes
+	cp b
+	jr nz,DontChangeNote1
+	
+	
+	ld a,0
+	ld (C1NotePtr),a
+	ld (C1NoteTimer),a
+	ld a,$FF
+	ld (RestFlag),a
+	
+DontChangeNote1
+
+
+
+	ld a,(RestFlag)
+	cp $ff
+	jr z,C1SoundOff
+
+
+	ld a,(C1NoteTimer)
+	cp 4
+	jp p,C1SoundOn
+	
+C1SoundOff
+	ld a,%10111111
+	jr C1StoreVolume
+	
+C1SoundOn
+
+	ld a,%10110000
+C1StoreVolume
+	out (SNDPORT),a
+	
+	
+	ld b,0
+	ld hl,C1NotePtr
+	ld c,(hl)
+	ld hl,C1Notes
+	add hl,bc
+	ld a,(hl)
+	
+	ld (RestFlag),a
+	cp $ff
+	jr z,DontStoreC1Freq
+	
+	ld b,%10100000
+	or b
+	out (SNDPORT),a
+	inc hl
+	ld a,(hl)
+	out (SNDPORT),a
+	
+DontStoreC1Freq
+	
+	ret
+	
+PlotPoint
+
+;;bc contains tile number
+;;d contains X position
+;;e contains Y position
+;;(afterward) hl contains name table address and gets plotted
+
+	push bc
+
+	ld hl,96
+	
+	ld b,0
+	ld a,e
+	cp b
+	jr z,DontMultiplyY
+	
+AddARow
+	
+	
+	ld a,l
+	add a,32
+	ld l,a
+	
+	ld a,h
+	adc a,0
+	ld h,a
+	
+	dec e
+	jr nz,AddARow
+	
+DontMultiplyY
+
+	ld b,0
+	ld c,d
+	add hl,bc
+	
+	ld bc,$7c04
+	add hl,bc
+	
+	pop bc
+	
+	call SetVDPAddress
+	
+	ld a,c
+	out (VDPDATA),a
+
+	ret
+	
+UpdateScore
+
+	ld a,(AddSegmentFlag)
+	cp $ff
+	jr nz,DisplayScore
+
+	ld a,(PointsToAdd)
+	ld e,a
+	
+	dec a
+	ld (FruitNoteIndex),a
+	sla a
+	ld ix,FruitNotes
+	ld b,0
+	ld c,a
+	add ix,bc
+	ld a,(ix)
+	ld b,%10100000
+	or b
+	out (SNDPORT),a
+	ld a,(ix+1)
+	out (SNDPORT),a
+	
+	ld a,4
+	ld (FruitNoteTimer),a
+	
+AddPointLoop
+	
+	ld a,(Score)
+	inc a
+	ld (Score),a
+	cp 11
+	jr nz,CheckLoop
+	
+	ld a,1
+	ld (Score),a
+	
+	ld a,(Score+1)
+	inc a
+	ld (Score+1),a
+	cp 11
+	jr nz,CheckLoop
+	
+	ld a,1
+	ld (Score+1),a
+	
+	ld a,(Score+2)
+	inc a
+	ld (Score+2),a
+	cp 11
+	jr nz,CheckLoop
+	
+	ld a,1
+	ld (Score+2),a
+	
+	ld a,(Score+3)
+	inc a
+	ld (Score+3),a
+	cp 11
+	jr nz,CheckLoop
+	
+	ld a,1
+	ld (Score+3),a
+	
+CheckLoop
+
+	dec e
+	ld a,e
+	cp 0
+	jr nz,AddPointLoop
+	
+	ld a,0
+	ld (PointCounter),a
+	ld a,5
+	ld (PointsToAdd),a
+	
+DisplayScore
+
+	ld hl,$7eb1
+	call SetVDPAddress
+	
+	ld a,(Score+3)
+	out (VDPDATA),a
+	ld a,(Score+2)
+	out (VDPDATA),a
+	ld a,(Score+1)
+	out (VDPDATA),a
+	ld a,(Score)
+	out (VDPDATA),a
+
+	ret
+	
+DisplayRound
+
+	call DeleteFruit
+
+	ld hl,$7ccc
+	call SetVDPAddress
+	
+	ld a,LeR
+	out (VDPDATA),a
+	ld a,LeO
+	out (VDPDATA),a
+	ld a,LeU
+	out (VDPDATA),a
+	ld a,LeN
+	out (VDPDATA),a
+	ld a,LeD
+	out (VDPDATA),a
+	ld a,blank
+	out (VDPDATA),a
+	ld a,(Round+1)
+	out (VDPDATA),a
+	ld a,(Round)
+	out (VDPDATA),a
+
+	ret
+	
+ClearRound
+
+	ld hl,$7ccc
+	call SetVDPAddress
+	
+	ld b,7
+ClearRoundLoop
+
+	ld a,blank
+	out (VDPDATA),a
+	dec b
+	
+	ld a,b
+	cp $ff
+	jr nz,ClearRoundLoop
+	
+	ret
+	
+SetUpGameScreen
+
+;;Row0	0	...	31
+;;Row1	32		63
+;;Row2	64		95	top boundary
+;;Row3	96		127	walls
+;;Row4	128		159	walls
+;;Row5	160		191	walls
+;;Row6	192		223	walls	round
+;;Row7	224		255	walls	
+;;Row8 	256		287	walls
+;;Row9	288		319	walls
+;;Row10	320		351	walls	s
+;;Row11	352		383	walls	s
+;;Row12	384		415	walls	s
+;;Row13	416		447	walls
+;;Row14	448		479	walls
+;;Row15	480		511	walls
+;;Row16	512		543	walls
+;;Row17	544		575	walls
+;;Row18	576		607	walls
+;;Row19	608		639	bottom boundary
+;;Row20	640		671	blank
+;;Row21	672		703	score
+;;Row22	704		735	
+;;Row23 736		767
+
+
+	ld hl,$7c40
+	call SetVDPAddress
+	
+	ld hl,TopWall
+	ld b,TopWallEnd-TopWall
+	ld c,VDPDATA
+	otir
+	
+	ld d,16
+	
+StoreWallLoop
+
+	ld hl,WallSection
+	ld b,WallSectionEnd-WallSection
+	ld c,VDPDATA
+	otir
+
+	dec d
+	jr nz,StoreWallLoop
+	
+	ld hl,$7e60
+	call SetVDPAddress
+	
+	ld hl,BottomWall
+	ld b,BottomWallEnd-BottomWall
+	ld c,VDPDATA
+	otir
+
+	ld hl,$7eab
+	call SetVDPAddress
+	
+	ld hl,ScoreText
+	ld b,ScoreTextEnd-ScoreText
+	ld c,VDPDATA
+	otir
+	
+	ld a,(Score+3)
+	out (VDPDATA),a
+	ld a,(Score+2)
+	out (VDPDATA),a
+	ld a,(Score+1)
+	out (VDPDATA),a
+	ld a,(Score)
+	out (VDPDATA),a
+
+	ret
+	
+	
+SetUpTitleScreen
+
+;;Tile Map set up:
+;;
+;;Row0	0	...	31
+;;Row1	32		63
+;;Row2	64		95
+;;Row3	96		127
+;;Row4	128		159
+;;Row5	160		191	Snake
+;;Row6	192		223	Snake
+;;Row7	224		255	Snake
+;;Row8 	256		287	Snake
+;;Row9	288		319	Snake
+;;Row10	320		351	empty
+;;Row11	352		383	empty
+;;Row12	384		415	Credits
+;;Row13	416		447	empty
+;;Row14	448		479	empty
+;;Row15	480		511	HS text
+;;Row16	512		543	empty
+;;Row17	544		575	empty
+;;Row18	576		607	score
+;;Row19	608		639
+;;Row20	640		671
+;;Row21	672		703
+;;Row22	704		735	sega
+;;Row23 736		767
+        
+;;SNAKE starts at row 5
+;;Name Table starts at $3C00
+
+	ld hl,$7ca0
+	call SetVDPAddress
+	
+	ld hl,SnakeText
+	ld b,SnakeTextEnd-SnakeText
+	ld c,VDPDATA
+	otir
+	
+	ld hl,$7d80
+	call SetVDPAddress
+	
+	ld hl,CopyrightText
+	ld b,CopyrightEnd-CopyrightText
+	ld c,VDPDATA
+	otir
+	
+	ld hl,$7de0
+	call SetVDPAddress
+	
+	ld hl,HighScoreText
+	ld b,HighScoreEnd-HighScoreText
+	ld c,VDPDATA
+	otir
+
+	ld hl,$7e4e
+	call SetVDPAddress
+	
+	ld a,(HighScore+3)
+	out (VDPDATA),a
+	ld a,(HighScore+2)
+	out (VDPDATA),a
+	ld a,(HighScore+1)
+	out (VDPDATA),a
+	ld a,(HighScore)
+	out (VDPDATA),a
+	
+	ld hl,$7eda
+	call SetVDPAddress
+	
+	ld a,SegaLogo0
+	out (VDPDATA),a
+	inc a
+	out (VDPDATA),a
+	inc a
+	out (VDPDATA),a
+	inc a
+	out (VDPDATA),a
+	
+	ret
+
+ClearVolumeRegisters
+
+	ld a,%10011111
+	out (SNDPORT),a
+	ld a,%10111111
+	out (SNDPORT),a
+	ld a,%11011111
+	out (SNDPORT),a
+	ld a,%11111111
+	out (SNDPORT),a
+	
+	ret
+	
+RoundLengths
+	.db 16,24,32,64
+	
+SnakeSpeeds
+	.db 12,10,8,5
+	
+FruitNotes
+	.dw Bb3,C4,D4,Eb4,F4
+
+	
+SnakeText:
+
+	.db blank,blank,blank,blank
+	.db SSeg,SSeg,SSeg,SSeg,blank,SSeg,blank,blank,SSeg,blank,blank,SSeg,SSeg
+	.db blank,blank,SSeg,blank,blank,SSeg,blank,SSeg,SSeg,SSeg,SSeg
+	.db blank,blank,blank,blank
+	
+	.db blank,blank,blank,blank
+	.db SSeg,blank,blank,blank,blank,SSeg,SSeg,blank,SSeg,blank,SSeg,blank
+	.db blank,SSeg,blank,SSeg,blank,SSeg,blank,blank,SSeg,blank,blank,blank
+	.db blank,blank,blank,blank
+	
+	.db blank,blank,blank,blank
+	.db SSeg,SSeg,SSeg,SSeg,blank,SSeg,blank,SSeg,SSeg,blank,SSeg,SSeg
+	.db SSeg,SSeg,blank,SSeg,SSeg,blank,blank,blank,SSeg,SSeg,SSeg,blank
+	.db blank,blank,blank,blank
+	
+	.db blank,blank,blank,blank
+	.db blank,blank,blank,SSeg,blank,SSeg,blank,blank,SSeg,blank,SSeg,blank
+	.db blank,SSeg,blank,SSeg,blank,SSeg,blank,blank,SSeg,blank,blank,blank
+	.db blank,blank,blank,blank
+	
+	.db blank,blank,blank,blank
+	.db SSeg,SSeg,SSeg,SSeg,blank,SSeg,blank,blank,SSeg,blank,SSeg,blank
+	.db blank,SSeg,blank,SSeg,blank,blank,SSeg,blank,SSeg,SSeg,SSeg,SSeg
+	.db blank,blank,blank,blank
+
+SnakeTextEnd:
+
+CopyrightText:
+
+	.db blank,blank,blank,blank,blank,blank,blank
+	.db Copyright,two,zero,one,one,blank,LeR,LeI,LeC,LeK,blank,LeS,LeK,LeR
+	.db LeB,LeI,LeN,LeA
+	.db blank,blank,blank,blank,blank,blank,blank
+
+CopyrightEnd:
+
+HighScoreText:
+
+	.db blank,blank,blank,blank,blank,blank,blank,blank,blank,blank;,blank
+	.db dash,LeH,LeI,LeG,LeH,blank,LeS,LeC,LeO,LeR,LeE,dash
+	.db blank,blank,blank,blank,blank,blank,blank,blank,blank,blank;,blank
+
+HighScoreEnd:
+
+TopWall:
+
+	.db blank,blank,blank
+	.db ULCor,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP
+	.db TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,URCor
+	.db blank,blank,blank
+
+TopWallEnd:
+
+WallSection:
+
+	.db blank,blank,blank
+	.db WallP,blank,blank,blank,blank,blank,blank,blank,blank,blank,blank
+	.db blank,blank,blank,blank,blank,blank,blank,blank,blank,blank,blank
+	.db blank,blank,blank,WallP
+	.db blank,blank,blank
+
+WallSectionEnd:
+
+BottomWall:
+
+	.db blank,blank,blank
+	.db BLCor,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP
+	.db TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,TopP,BRCor
+
+BottomWallEnd:
+
+ScoreText:
+
+	.db LeS,LeC,LeO,LeR,LeE,colon;,zero,zero,zero,zero
+
+ScoreTextEnd:
+
+
+Font:
+
+
+Numbers:
+
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	
+	.db %00000000
+	.db %00111100
+	.db %01100110
+	.db %01100110
+	.db %01100110
+	.db %01100110
+	.db %01100110
+	.db %00111100
+	
+	.db %00000000
+	.db %00011000
+	.db %00111000
+	.db %01111000
+	.db %00011000
+	.db %00011000
+	.db %00011000
+	.db %01111110
+	
+	.db %00000000
+	.db %00111100
+	.db %01100110
+	.db %00000110
+	.db %00011100
+	.db %00110000
+	.db %01100000
+	.db %01111110
+
+	.db %00000000
+	.db %00111100
+	.db %01100110
+	.db %00000110
+	.db %00001100
+	.db %00000110
+	.db %01100110
+	.db %00111100
+	
+	.db %00000000
+	.db %01100000
+	.db %01101100
+	.db %01101100
+	.db %01111110
+	.db %00001100
+	.db %00001100
+	.db %00001100
+	
+	.db %00000000
+	.db %01111110
+	.db %01100000
+	.db %01111100
+	.db %00000110
+	.db %00000110
+	.db %01100110
+	.db %00111100
+	
+	.db %00000000
+	.db %00111100
+	.db %01100110
+	.db %01100000
+	.db %01111100
+	.db %01100110
+	.db %01100110
+	.db %00111100
+	
+	.db %00000000
+	.db %01111110
+	.db %00000110
+	.db %00000110
+	.db %00001100
+	.db %00001100
+	.db %00011000
+	.db %00011000
+	
+	.db %00000000
+	.db %00111100
+	.db %01100110
+	.db %01100110
+	.db %00111100
+	.db %01100110
+	.db %01100110
+	.db %00111100
+	
+	.db %00000000
+	.db %00111100
+	.db %01100110
+	.db %01100110
+	.db %00111110
+	.db %00000110
+	.db %01100110
+	.db %00111100
+	
+	
+NumberEnd:
+
+Letters:
+
+	.db %00000000
+	.db %00111100
+	.db %01110010
+	.db %01110010
+	.db %01111110
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	
+	.db %00000000
+	.db %01111100
+	.db %01110010
+	.db %01110010
+	.db %01111100
+	.db %01110010
+	.db %01110010
+	.db %01111100
+	
+	.db %00000000
+	.db %00111100
+	.db %01110010
+	.db %01110000
+	.db %01110000
+	.db %01110000
+	.db %01110010
+	.db %00111100
+	
+	.db %00000000
+	.db %01111100
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %01111100
+	
+	.db %00000000
+	.db %01111110
+	.db %01110000
+	.db %01110000
+	.db %01111100
+	.db %01110000
+	.db %01110000
+	.db %01111110
+	
+	.db %00000000
+	.db %01111110
+	.db %01110000
+	.db %01110000
+	.db %01111100
+	.db %01110000
+	.db %01110000
+	.db %01110000
+	
+	.db %00000000
+	.db %00111100
+	.db %01110010
+	.db %01110000
+	.db %01110110
+	.db %01110010
+	.db %01110010
+	.db %00111100
+	
+	.db %00000000
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %01111110
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	
+	.db %00000000
+	.db %00011100
+	.db %00011100
+	.db %00011100
+	.db %00011100
+	.db %00011100
+	.db %00011100
+	.db %00011100
+	
+	.db %00000000
+	.db %00000110
+	.db %00000110
+	.db %00000110
+	.db %00000110
+	.db %00000110
+	.db %01100110
+	.db %00111100
+	
+	.db %00000000
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %01111100
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	
+	.db %00000000
+	.db %01110000
+	.db %01110000
+	.db %01110000
+	.db %01110000
+	.db %01110000
+	.db %01110000
+	.db %01111110
+	
+	.db %00000000
+	.db %01100010
+	.db %01110110
+	.db %01101010
+	.db %01100010
+	.db %01100010
+	.db %01100010
+	.db %01100010
+	
+	.db %00000000
+	.db %01111100
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	
+	.db %00000000
+	.db %00111100
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %00111100
+	
+	.db %00000000
+	.db %01111100
+	.db %01110010
+	.db %01110010
+	.db %01111100
+	.db %01110000
+	.db %01110000
+	.db %01110000
+	
+	.db %00000000
+	.db %00111100
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %01110110
+	.db %00111110
+	
+	.db %00000000
+	.db %01111100
+	.db %01110010
+	.db %01110010
+	.db %01111100
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	
+	.db %00000000
+	.db %00111100
+	.db %01110010
+	.db %01111000
+	.db %00111100
+	.db %00011110
+	.db %01001110
+	.db %00111100
+	
+	.db %00000000
+	.db %01111110
+	.db %00011000
+	.db %00011000
+	.db %00011000
+	.db %00011000
+	.db %00011000
+	.db %00011000
+
+	.db %00000000
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %01110010
+	.db %00111100
+	
+	.db %00000000
+	.db %00011000
+	.db %00011000
+	.db %01100110
+	.db %01100110
+	.db %00011000
+	.db %00011000
+	.db %00000000
+	
+	.db %00111100
+	.db %01000010
+	.db %10011101
+	.db %10100001
+	.db %10100001
+	.db %10011101
+	.db %01000010
+	.db %00111100
+	
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %11111110
+	.db %11111110
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	
+	.db %00000000
+	.db %00000000
+	.db %01100000
+	.db %01100000
+	.db %00000000
+	.db %00000000
+	.db %01100000
+	.db %01100000
+	
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	
+;;sega colors
+	.db %01111110
+	.db %11111110
+	.db %11100000
+	.db %11111100
+	.db %01111110
+	.db %00001110
+	.db %11111110
+	.db %11111100
+	
+	.db %01111110
+	.db %11111110
+	.db %11100000
+	.db %11111100
+	.db %11111100
+	.db %11100000
+	.db %11111110
+	.db %01111110
+	
+	.db %01111110
+	.db %11111110
+	.db %11100000
+	.db %11101110
+	.db %11100110
+	.db %11100110
+	.db %11111110
+	.db %01111110
+	
+	.db %00011110
+	.db %00011110
+	.db %00111111
+	.db %00111011
+	.db %01110011
+	.db %01110011
+	.db %11101111
+	.db %11101111
+	
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	
+;;boundary colors
+
+	.db %00111100
+	.db %00111100
+	.db %00111100
+	.db %00111100
+	.db %00111100
+	.db %00111100
+	.db %00111100
+	.db %00111100
+	
+	.db %00000000
+	.db %00000000
+	.db %11111111
+	.db %11111111
+	.db %11111111
+	.db %11111111
+	.db %00000000
+	.db %00000000
+	
+	.db %00000000
+	.db %00000000
+	.db %00111111
+	.db %00111111
+	.db %00111111
+	.db %00111111
+	.db %00111100
+	.db %00111100
+	
+	.db %00111100
+	.db %00111100
+	.db %00111111
+	.db %00111111
+	.db %00111111
+	.db %00111111
+	.db %00000000
+	.db %00000000
+	
+	.db %00000000
+	.db %00000000
+	.db %11111100
+	.db %11111100
+	.db %11111100
+	.db %11111100
+	.db %00111100
+	.db %00111100
+	
+	.db %00111100
+	.db %00111100
+	.db %11111100
+	.db %11111100
+	.db %11111100
+	.db %11111100
+	.db %00000000
+	.db %00000000
+	
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	.db %00000000
+	
+;;Snake colors
+
+	.db %00000000
+	.db %01111110
+	.db %01111110
+	.db %01111110
+	.db %01111110
+	.db %01111110
+	.db %01111110
+	.db %00000000
+
+LetterEnd:
+	
+FontEnd:
+
+
+
+VDPInitial:
+	.db $00,$80,$40,$81,$0F,$82,$00,$83,$01,$84,$01,$85,$04,$86,$08,$87
+VDPInitialEnd:
+
+C0Notes:
+
+	.dw Bb2,F3,Bb2,Bb2,F3,Bb3,Eb3
+	
+C0NotesEnd:
+
+
+
+C0NoteTimes:
+
+	.db Quater,Eighth,Eighth,Eighth,Eighth,Eighth,Whole+Eighth
+	
+C1Notes:
+
+	.dw Rest,Rest,Bb3,Eb4,D4,Bb3,Eb4,D4,Bb3,Eb4,D4,Eb4,D4,Bb3,Eb4,D4,Bb3
+	
+	.dw Bb3,C4,Bb3,C4,D4,Bb3
+	.dw D4,Eb4,D4,Eb4,F4,Bb3
+	.dw G4,F4,Eb4,Db4,D4,Bb3
+	.dw Db4,D4,Bb3
+	
+	.dw Bb3,C4,Bb3,C4,D4,Bb3
+	.dw D4,Eb4,D4,Eb4,F4,Bb3
+	.dw G4,F4,Eb4,Db4,D4,Bb3
+	.dw Eb4,D4,C4,Bb3
+	
+	.dw D4,Eb4,D4,Eb4,D4,Bb3
+	.dw D4,Eb4,D4,Eb4,D4,Bb3
+	.dw D4,Eb4,D4,Eb4,F4,Bb3
+	.dw Bb3,Eb4,Bb3,Eb4,Db4,D4
+	
+	.dw D4,Eb4,D4,Eb4,D4,Bb3
+	.dw D4,Eb4,D4,Eb4,D4,Bb3
+	.dw D4,Eb4,D4,Eb4,F4,Bb3
+	.dw Bb3,Eb4,Bb3,Eb4,Db4,D4
+	
+;	.dw Rest
+	
+	
+C1NotesEnd:
+
+C1NoteTimes:
+
+	.db Double,Half+Quater+Eighth,Half+Quater,Quater,Whole,Half+Quater,Quater,Whole
+	.db Half,Quater,Eighth,Eighth,Whole,Half+Quater,Quater,Whole,Half
+
+	.db Eighth,Eighth,Eighth,Eighth,Whole,Half
+	.db Eighth,Eighth,Eighth,Eighth,Whole,Half
+	.db Eighth,Eighth+Sixteen,Eighth+Sixteen,Sixteen,Half+Quater+Sixteen,Whole
+	.db Eighth+Sixteen,Half+Quater+Sixteen,Half+Eighth
+	
+	.db Eighth,Eighth,Eighth,Eighth,Whole,Half
+	.db Eighth,Eighth,Eighth,Eighth,Whole,Half
+	.db Eighth,Eighth+Sixteen,Eighth+Sixteen,Sixteen,Half+Quater+Sixteen,Half+Eighth
+	.db Eighth,Eighth+Sixteen,Eighth+Sixteen,Whole+Half
+	
+	.db Eighth,Eighth,Eighth,Eighth,Whole,Half
+	.db Eighth,Eighth,Eighth,Eighth,Whole,Half
+	.db Eighth,Eighth,Eighth,Eighth,Whole,Half
+	.db Eighth,Eighth+Sixteen,Eighth+Sixteen,Eighth+Sixteen,Sixteen,Whole+Quater
+	
+	.db Eighth,Eighth,Eighth,Eighth,Whole,Half
+	.db Eighth,Eighth,Eighth,Eighth,Whole,Half
+	.db Eighth,Eighth,Eighth,Eighth,Whole,Half
+	.db Eighth,Eighth+Sixteen,Eighth+Sixteen,Eighth+Sixteen,Sixteen,Whole+Quater+Half+Eighth
+	
+;	.db Half+Eighth
+	
+
+
+
+
+GOBNotes:
+
+	.dw G3,F3,Eb3,C3,D3
+	.dw G3,F3,Eb3,C3,D3
+	.dw G3,A3,Bb3,Eb3,D3
+	.dw G3,A3,Bb3,Eb3,Eb3,Eb3,Eb3,Eb3,Eb3,Eb3,Eb3
+	.dw G3,A3,Bb3,C4,Bb3,A3,G3,Eb3,D3,F3,G3,G3,G3,G3,G3,G3,G3,G3
+
+GOBNotesEnd:
+
+GOBNotesH:
+
+	.dw G4,F4,Eb4,C4,D4
+	.dw G4,F4,Eb4,C4,D4
+	.dw G4,A4,Bb4,Eb4,D4
+	.dw G4,A4,Bb4,Eb4,Eb4,Eb4,Eb4,Eb4,Eb4,Eb4,Eb4
+	.dw G4,A4,Bb4,C5,Bb4,A4,G4,Eb4,D4,F4,G4,G4,G4,G4,G4,G4,G4,G4
+	
+GOBTimes:
+
+	.db gWhole,gWhole,gWhole,gHalf,gHalf
+	.db gWhole,gWhole,gWhole,gHalf,gHalf
+	.db gHalf,gQuater,gQuater,gHalf+gQuater+gTriplet+gTriplet,gTriplet
+	.db gHalf,gQuater,gQuater,gEighth,gEighth,gEighth,gEighth,gEighth,gEighth,gEighth,gEighth
+	.db gHalf,gQuater,gQuater,gQuater,gQuater,gQuater,gQuater,gHalf,gQuater+gTriplet+gTriplet
+	.db gTriplet,gEighth,gEighth,gEighth,gEighth,gEighth,gEighth,gEighth,gEighth
+	
+GOBMNotes:
+
+	.dw D6,G5,Bb5
+
+
+GOBMNotesEnd:
+
+GOBMNoteTimes:
+	
+	.db gTriplet,gTriplet,gTriplet
+
+	
+	.org $7FFF
+	.db $FF
+
+
+	end

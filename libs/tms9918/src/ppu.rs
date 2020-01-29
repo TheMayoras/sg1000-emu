@@ -9,6 +9,7 @@ use textmode::TextModeRenderer;
 
 mod graphics1;
 mod graphics2;
+mod sprites;
 mod textmode;
 
 type Color = Rgba<u8>;
@@ -62,7 +63,7 @@ enum GrahpicsMode {
 #[allow(dead_code)]
 #[rustfmt::skip]
 pub struct Ppu {
-    pub canvas:   Canvas,
+    canvas:   Option<Canvas>,
     next_canvas:  Canvas,
     ram:          MutRef<Ram>,
     status_reg:   u8,
@@ -79,7 +80,7 @@ impl Ppu {
     #[rustfmt::skip]
     pub fn new() -> Ppu {
         let mut ppu = Ppu {
-            canvas:       ImageBuffer::new(4*WIDTH, 4*HEIGHT),
+            canvas:       Some(ImageBuffer::new(4*WIDTH, 4*HEIGHT)),
             next_canvas:  ImageBuffer::new(4*WIDTH, 4*HEIGHT),
             ram:          Rc::new(RefCell::new(Ram::builder().size(VRAM_SIZE).build())),
             status_reg:   0,
@@ -89,12 +90,21 @@ impl Ppu {
             clock_cycles: 0,
             rw_state:     RWState::None,
             cpu_addr:     0,
-            image_zoom:   4,
+            image_zoom:   2,
         };
         ppu.registers[1] = 0b1_0000;
         ppu.registers[7] = 0xE1;
 
         ppu
+    }
+
+    /// Gets the current canvas.
+    /// # Returns
+    /// None if there was no change in the canvas
+    /// Some with the new canvas
+    ///     Note that calling this will consume the canvas
+    pub fn get_canvas(&mut self) -> Option<Canvas> {
+        self.canvas.take()
     }
 
     fn ram_read(&mut self) -> u8 {
@@ -103,9 +113,11 @@ impl Ppu {
         val
     }
 
+    // get the status register
+    // this resets the top two bits of the register and resets the read_write state
     fn get_status_reg(&mut self) -> u8 {
         let output = self.status_reg;
-        self.status_reg = 0;
+        self.status_reg &= !(0b11 << 7);
         self.rw_state = RWState::None;
 
         output
@@ -140,7 +152,7 @@ impl Ppu {
         !is_bit_set(self.registers[1].into(), 6)
     }
 
-    fn intrpt_enabled(&self) -> bool {
+    pub fn intrpt_enabled(&self) -> bool {
         is_bit_set(self.registers[1].into(), 5)
     }
 
@@ -180,7 +192,7 @@ impl Ppu {
         self.registers[5] as u16 * 0x80
     }
 
-    fn sprite_patt_gen(&self) -> u16 {
+    fn sprite_patt_gen_table(&self) -> u16 {
         self.registers[6] as u16 * 0x800
     }
 }
@@ -197,35 +209,22 @@ impl Ppu {
             }
             self.clock_cycles -= CYCLES_PER_LINE;
             self.line += 1;
-            self.line %= self.max_lines;
 
-            vblank = self.line == 0;
-            //println!(
-            //    "\
-            //     \
-            //     \
-            //     ==================== SCANNING LINE ===================\
-            //     \
-            //     \
-            //     "
-            //);
+            vblank = self.line as u32 == HEIGHT;
+
+            self.line %= self.max_lines;
         }
 
         if vblank {
-            //println!(
-            //    "
-            //
-            //
-            //     ==================== SWAPPING CANVASES===================
-            //
-            //
-            //     "
-            //);
-            mem::swap(&mut self.next_canvas, &mut self.canvas);
-            self.next_canvas = ImageBuffer::new(
+            let mut swapped_canvas = ImageBuffer::new(
                 WIDTH * self.image_zoom as u32,
                 HEIGHT * self.image_zoom as u32,
             );
+            mem::swap(&mut swapped_canvas, &mut self.next_canvas);
+            self.canvas = Some(swapped_canvas);
+
+            // set the interrupt flag
+            self.status_reg |= 1 << 7;
         }
 
         return vblank;
@@ -234,7 +233,7 @@ impl Ppu {
     fn scan_line(&mut self) {
         use GrahpicsMode::*;
 
-        if self.line > self.max_lines {
+        if self.line as u32 >= HEIGHT {
             return;
         }
 
@@ -244,6 +243,14 @@ impl Ppu {
             Graphics2 => Graphics2Renderer::new(self, self.image_zoom.into(), self.line).draw(),
             _ => unimplemented!("Graphics mode: {:?}", self.graphics_mode()),
         };
+    }
+
+    fn set_coincidence_flag(&mut self) {
+        self.status_reg |= 1 << 6;
+    }
+
+    fn set_5th_sprite(&mut self, num: u8) {
+        self.status_reg |= num & 0b1_1111;
     }
 }
 
@@ -262,22 +269,22 @@ impl BusConnectable for Ppu {
     }
 
     fn cpu_write(&mut self, addr: u16, val: u8) -> bool {
-        //println!(
-        //    "Writing val 0x{:x} (0b{:04b} {:04b}) to address 0x{:x} in PPU",
-        //    val,
-        //    (val >> 4) & 0b1111,
-        //    val & 0b1111,
-        //    addr & 0xFF,
-        //);
+        // println!(
+        //     "Writing val 0x{:x} (0b{:04b} {:04b}) to address 0x{:x} in PPU",
+        //     val,
+        //     (val >> 4) & 0b1111,
+        //     val & 0b1111,
+        //     addr & 0xFF,
+        // );
         match addr & 0xFF {
             0xBE => {
                 self.ram.borrow_mut().cpu_write(self.cpu_addr, val);
-                //println!(
-                //    "
-                //===== WRITING 0x{:x} TO 0x{:x} IN PPU ====
-                //",
-                //    val, self.cpu_addr
-                //);
+                // println!(
+                //     "
+                // ===== WRITING 0x{:02x} TO 0x{:04x} IN PPU ====
+                // ",
+                //     val, self.cpu_addr
+                // );
                 self.cpu_addr += 1;
             }
             0xBF => match self.rw_state {
@@ -287,15 +294,16 @@ impl BusConnectable for Ppu {
                 RWState::First(fst) => {
                     if val >> 6 == 0b01 {
                         // set cpu address
-                        let high = (fst as u16) << 8;
-                        self.cpu_addr = high + (val as u16 & 0b0011_1111);
+                        let high = val as u16 & 0b0011_1111;
+                        self.cpu_addr = (high << 8) | fst as u16;
+                    // println!("Setting PPU Addr to 0x{:04x}", self.cpu_addr);
                     } else if val >> 4 == 0b1000 {
                         // write to register
                         let reg = val & 0b1111;
                         if reg <= 0b111 {
                             self.registers[reg as usize] = fst;
                         }
-                        //println!("Writing 0x{:02x} to register {} in PPU", fst, reg);
+                        // println!("Writing 0x{:02x} to register {} in PPU", fst, reg);
                     }
 
                     self.rw_state = RWState::None;

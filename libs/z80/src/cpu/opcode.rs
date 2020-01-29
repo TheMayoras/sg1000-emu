@@ -385,6 +385,8 @@ pub enum Opcode {
     PopDE = 0xD1,
     PopHL = 0xE1,
     PopAF = 0xF1,
+
+    Cpl = 0x2F,
 }
 
 impl Opcode {
@@ -432,7 +434,7 @@ impl Opcode {
         U: BitsOperator,
     {
         use super::Flags;
-        //println!("Found opcode: {:?}", opcode);
+        // println!("Found opcode: {:?}", opcode);
         match opcode {
             Opcode::NoOp => cpu.noop(),
 
@@ -566,8 +568,8 @@ impl Opcode {
 
             // Ld (HL), literal
             Opcode::LdHlptrLit => {
-                let val = cpu.imm_addr();
                 let addr = pointer(cpu);
+                let val = cpu.imm_addr();
                 cpu.ld_addr_lit(addr, val);
             }
 
@@ -604,7 +606,7 @@ impl Opcode {
 
             Opcode::LdHLLit => {
                 let val = cpu.imm_addr_ex();
-                cpu.ld_reg16_lit(RegisterCode16::HL, val);
+                cpu.ld_reg16_lit(reg, val);
             }
 
             Opcode::LdSpLit => {
@@ -658,7 +660,7 @@ impl Opcode {
 
             Opcode::DecBC => cpu.dec_reg16(RegisterCode16::BC),
             Opcode::DecDE => cpu.dec_reg16(RegisterCode16::DE),
-            Opcode::DecHL => cpu.dec_reg16(RegisterCode16::HL),
+            Opcode::DecHL => cpu.dec_reg16(reg),
             Opcode::DecSP => cpu.dec_reg16(RegisterCode16::SP),
 
             Opcode::AddAB => cpu.add_a_reg(RegisterCode::B),
@@ -695,9 +697,9 @@ impl Opcode {
                 cpu.add_a_lit_carry(val);
             }
 
-            Opcode::AddHLBC => cpu.add_reg16_reg16(RegisterCode16::HL, RegisterCode16::BC),
-            Opcode::AddHLDE => cpu.add_reg16_reg16(RegisterCode16::HL, RegisterCode16::DE),
-            Opcode::AddHLHL => cpu.add_reg16_reg16(RegisterCode16::HL, RegisterCode16::HL),
+            Opcode::AddHLBC => cpu.add_reg16_reg16(reg, RegisterCode16::BC),
+            Opcode::AddHLDE => cpu.add_reg16_reg16(reg, RegisterCode16::DE),
+            Opcode::AddHLHL => cpu.add_reg16_reg16(reg, RegisterCode16::HL),
             Opcode::AddHLSP => cpu.add_reg16_reg16(reg, RegisterCode16::SP),
 
             Opcode::SubAB => cpu.sub_a_reg(RegisterCode::B),
@@ -947,6 +949,8 @@ impl Opcode {
             Opcode::PopDE => cpu.pop_reg16(RegisterCode16::DE),
             Opcode::PopHL => cpu.pop_reg16(reg),
             Opcode::PopAF => cpu.pop_reg16(RegisterCode16::AF),
+
+            Opcode::Cpl => cpu.cpl(),
 
             // Extended Opcodes
             Opcode::Ix => {

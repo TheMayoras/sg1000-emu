@@ -112,7 +112,7 @@ impl Extnd {
 
     pub fn operate(cpu: &mut Cpu, opcode: Extnd) {
         use Extnd::*;
-        //println!("Found Extnd Opcode: {:?}", opcode);
+        // println!("Found Extnd Opcode: {:?}", opcode);
         match opcode {
             SbcHLBC => cpu.sbc_reg16_reg16(RegisterCode16::HL, RegisterCode16::BC),
             SbcHLDE => cpu.sbc_reg16_reg16(RegisterCode16::HL, RegisterCode16::DE),

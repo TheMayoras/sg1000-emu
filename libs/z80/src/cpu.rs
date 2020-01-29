@@ -517,7 +517,8 @@ impl Cpu {
     /// load the dest reg with the src reg value
     /// LD A, B
     fn ld_reg_reg(&mut self, dst: RegisterCode, src: RegisterCode) {
-        self.reg[dst as usize] = self.reg[src as usize];
+        let val = self.reg_value(src);
+        self.set_reg_value(dst, val as u16);
 
         // if the opcode is:
         //      Ld A, I
@@ -2060,7 +2061,7 @@ impl Cpu {
 
     fn in_addr(&self, addr: u16) -> u8 {
         self.io_bus.borrow_mut().cpu_read(addr).expect(&format!(
-            "Attempting to read from IO bus at {:x} but there was no mapping for that address",
+            "Attempting to read from IO bus at 0x{:04x} but there was no mapping for that address",
             addr
         ))
     }

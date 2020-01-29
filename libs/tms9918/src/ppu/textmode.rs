@@ -43,7 +43,7 @@ impl<'a> Renderer for TextModeRenderer<'a> {
             patt_tbl_ptr += self.inner_cell_row() as u16; // get the row in the pattern table
 
             let mut pattern = self.ppu.ram.borrow_mut().cpu_read(patt_tbl_ptr); // the actual row of the pattern cell we care about
-            for bit_num in 0..=6 {
+            for bit_num in 0..7 {
                 if (pattern & 0b1000_0000) == 0 {
                     self.color_pixel(back_color, i * 6 + bit_num, self.line);
                 } else {
