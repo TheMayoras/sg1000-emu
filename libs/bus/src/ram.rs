@@ -142,7 +142,7 @@ impl RamBuilder {
         let size = self.size.unwrap_or(MAX_SIZE);
         let data = self
             .data
-            .unwrap_or(Rc::new(RefCell::new(Vec::with_capacity(MAX_SIZE))));
+            .unwrap_or(Rc::new(RefCell::new(Vec::with_capacity(size))));
 
         data.borrow_mut().resize(size, 0);
         Ram {
