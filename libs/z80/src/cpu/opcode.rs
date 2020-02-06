@@ -457,7 +457,7 @@ impl Opcode {
             Opcode::LdHC => cpu.ld_reg_reg(upper, RegisterCode::C),
             Opcode::LdHD => cpu.ld_reg_reg(upper, RegisterCode::D),
             Opcode::LdHE => cpu.ld_reg_reg(upper, RegisterCode::E),
-            Opcode::LdHH => cpu.ld_reg_reg(upper, RegisterCode::H),
+            Opcode::LdHH => cpu.ld_reg_reg(upper, upper),
             Opcode::LdHL => cpu.ld_reg_reg(upper, lower),
             Opcode::LdHA => cpu.ld_reg_reg(upper, RegisterCode::A),
             Opcode::LdCB => cpu.ld_reg_reg(RegisterCode::C, RegisterCode::B),
@@ -479,7 +479,7 @@ impl Opcode {
             Opcode::LdLD => cpu.ld_reg_reg(lower, RegisterCode::D),
             Opcode::LdLE => cpu.ld_reg_reg(lower, RegisterCode::E),
             Opcode::LdLH => cpu.ld_reg_reg(lower, upper),
-            Opcode::LdLL => cpu.ld_reg_reg(lower, RegisterCode::L),
+            Opcode::LdLL => cpu.ld_reg_reg(lower, lower),
             Opcode::LdLA => cpu.ld_reg_reg(lower, RegisterCode::A),
             Opcode::LdAB => cpu.ld_reg_reg(RegisterCode::A, RegisterCode::B),
             Opcode::LdAC => cpu.ld_reg_reg(RegisterCode::A, RegisterCode::C),
@@ -642,7 +642,7 @@ impl Opcode {
 
             Opcode::IncBC => cpu.inc_reg16(RegisterCode16::BC),
             Opcode::IncDE => cpu.inc_reg16(RegisterCode16::DE),
-            Opcode::IncHL => cpu.inc_reg16(RegisterCode16::HL),
+            Opcode::IncHL => cpu.inc_reg16(reg),
             Opcode::IncSP => cpu.inc_reg16(RegisterCode16::SP),
 
             Opcode::DecB => cpu.dec_reg(RegisterCode::B),
@@ -699,7 +699,7 @@ impl Opcode {
 
             Opcode::AddHLBC => cpu.add_reg16_reg16(reg, RegisterCode16::BC),
             Opcode::AddHLDE => cpu.add_reg16_reg16(reg, RegisterCode16::DE),
-            Opcode::AddHLHL => cpu.add_reg16_reg16(reg, RegisterCode16::HL),
+            Opcode::AddHLHL => cpu.add_reg16_reg16(reg, reg),
             Opcode::AddHLSP => cpu.add_reg16_reg16(reg, RegisterCode16::SP),
 
             Opcode::SubAB => cpu.sub_a_reg(RegisterCode::B),
