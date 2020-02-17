@@ -1,7 +1,9 @@
 use bus::{bus::*, ram::*, BusConnectable, MemoryMap, MutRef};
 use piston::{Button, ButtonArgs, ButtonState, Key};
 use std::fs::File;
+use std::io::stdout;
 use std::io::Read;
+use std::path::PathBuf;
 use std::{cell::RefCell, rc::Rc};
 use tms9918::ppu::*;
 use z80::cpu::*;
@@ -28,11 +30,8 @@ impl Emulator {
     //     0x42, 0xcb, 0x3c, 0xcb, 0x1d, 0xcb, 0x38, 0xcb, 0x19, 0x30,
     //     0xe3, // 0xC3, 0x00, 0x00,
     // ]
-    pub fn new() -> Emulator {
-        let mut zexall = File::open(
-            "D:\\Software\\SoftwareLanguages\\Rust\\sg-1000-emu\\resources\\poleposition.sg",
-        )
-        .expect("Could not find file");
+    pub fn new(file: &PathBuf) -> Emulator {
+        let mut zexall = File::open(file).expect("Could not find file");
 
         let mut data = Vec::with_capacity(0xFFFF + 1);
         // zexall.seek(SeekFrom::Start(0x69)).unwrap();
@@ -127,6 +126,16 @@ impl Emulator {
                 if args.state == ButtonState::Press {
                     self.cpu.borrow_mut().nomask_interrupt = true;
                 }
+            }
+            Button::Keyboard(Key::P) if args.state == ButtonState::Press => {
+                self.paused = !self.paused
+            }
+            Button::Keyboard(Key::Backslash)
+                if self.paused && args.state == ButtonState::Release =>
+            {
+                self.cpu.borrow().log(stdout()).unwrap();
+                self.ppu.borrow().log(stdout()).unwrap();
+                // self.ppu.log(stdout());
             }
             _ => {
                 if !self.paused {
@@ -224,5 +233,21 @@ impl BusConnectable for KeyboardController {
 
     fn cpu_write(&mut self, _addr: u16, _val: u8) -> bool {
         false
+    }
+}
+
+struct MiscIo {}
+
+impl BusConnectable for MiscIo {
+    fn accept(&self, addr: u16) -> bool {
+        (addr & 0xDE) == 0xDE
+    }
+
+    fn cpu_read(&mut self, addr: u16) -> u8 {
+        0
+    }
+
+    fn cpu_write(&mut self, addr: u16, val: u8) -> bool {
+        true
     }
 }
