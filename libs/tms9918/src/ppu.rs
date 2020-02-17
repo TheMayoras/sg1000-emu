@@ -3,6 +3,7 @@ use bus::{bus::*, ram::Ram, BusConnectable, MutRef};
 use graphics1::Graphics1Renderer;
 use graphics2::Graphics2Renderer;
 use im::*;
+use std::io::{Result, Write};
 use std::mem;
 use std::{cell::RefCell, rc::Rc};
 use textmode::TextModeRenderer;
@@ -194,6 +195,12 @@ impl Ppu {
 
     fn sprite_patt_gen_table(&self) -> u16 {
         self.registers[6] as u16 * 0x800
+    }
+
+    pub fn log(&self, mut log: impl Write) -> std::io::Result<()> {
+        writeln!(log, "Graphics: {:?}", self.graphics_mode())?;
+
+        Ok(())
     }
 }
 
