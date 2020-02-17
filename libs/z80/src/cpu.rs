@@ -3,6 +3,7 @@ extern crate bus;
 
 use bus::{bus::Bus, MutRef};
 use opcode::Opcode;
+use std::io::Write;
 use std::{mem, rc::Rc};
 
 // DONE:
@@ -325,6 +326,56 @@ impl Cpu {
     pub fn reset_halt(&mut self) {
         self.halted = false;
     }
+
+    pub fn log(&self, mut log: impl Write) -> std::io::Result<()> {
+        use RegisterCode::*;
+        use RegisterCode16::*;
+        writeln!(
+            log,
+            "A:  0x{:02x}    F:  0x{:02x}",
+            self.reg_value(A),
+            self.reg_value(Flags),
+        )?;
+
+        writeln!(
+            log,
+            "B:  0x{:02x}    C:  0x{:02x}",
+            self.reg_value(B),
+            self.reg_value(C),
+        )?;
+
+        writeln!(
+            log,
+            "D:  0x{:02x}    E:  0x{:02x}",
+            self.reg_value(D),
+            self.reg_value(E),
+        )?;
+
+        writeln!(
+            log,
+            "H:  0x{:02x}    L:  0x{:02x}",
+            self.reg_value(H),
+            self.reg_value(L),
+        )?;
+
+        writeln!(
+            log,
+            "IX: 0x{:04x}  IY: 0x{:04x}",
+            self.reg_value_16(IX),
+            self.reg_value_16(IY),
+        )?;
+
+        writeln!(
+            log,
+            "PC: 0x{:04x}  SP: 0x{:04x}",
+            self.reg_value_16(PC),
+            self.reg_value_16(SP),
+        )?;
+
+        writeln!(log, "Halted? {}", self.halted)?;
+
+        Ok(())
+    }
 }
 
 // The do_operation and related functions
@@ -591,7 +642,7 @@ impl Cpu {
         let val = self.reg_value_16(src);
 
         self.store(addr, (val & 0xFF) as u8);
-        self.store(addr, ((val >> 8) & 0xFF) as u8);
+        self.store(addr + 1, ((val >> 8) & 0xFF) as u8);
         self.tick_clock(16);
     }
 
@@ -601,13 +652,6 @@ impl Cpu {
         // high order byte is stored first
         self.push(((val >> 8) & 0xFF) as u8);
         self.push((val & 0xFF) as u8);
-
-        //        println!(
-        //            "Pushing Reg {:?} with the vals {}  &&  {}",
-        //            src,
-        //            ((val >> 8) & 0xFF) as u8,
-        //            (val & 0xFF) as u8
-        //        );
 
         self.tick_clock(11);
     }
@@ -1800,6 +1844,7 @@ impl Cpu {
 
     fn interrupt_1(&mut self) {
         if self.iff1 && self.interrupt_count == 0 {
+            self.halted = false;
             self.push_pc();
             self.set_reg_value_16(RegisterCode16::PC, 0x0038);
             self.tick_clock(8);
