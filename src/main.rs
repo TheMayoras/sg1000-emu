@@ -14,6 +14,7 @@ use piston::window::WindowSettings;
 use piston::EventLoop;
 use piston::{ButtonArgs, RenderEvent};
 use piston_window::*;
+use std::path::PathBuf;
 
 mod emulator;
 
@@ -50,9 +51,13 @@ fn main() {
     // let ref mut glyphs = GlyphCache::new("assets/FiraMono-Regular.ttf", (), texture_settings)
     //     .expect("Could not load font");
 
+    let path = std::env::args()
+        .nth(1)
+        .expect("The path of the game was not specified!");
+
     // Create a new game and run it.
     let mut app = App {
-        emulator: emulator::Emulator::new(),
+        emulator: emulator::Emulator::new(&PathBuf::from(path)),
     };
 
     let mut texture: G2dTexture = Texture::from_image(
