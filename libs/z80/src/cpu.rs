@@ -6,11 +6,6 @@ use opcode::Opcode;
 use std::io::Write;
 use std::{mem, rc::Rc};
 
-// DONE:
-// 1). LD for main group
-// 2). INC for main group
-// 3). Dec for main group
-
 mod bits;
 mod extended;
 mod opcode;
