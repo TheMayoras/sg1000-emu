@@ -421,16 +421,15 @@ impl Opcode {
         }
     }
 
-    fn operate_with<T, U>(
+    fn operate_with<U>(
         cpu: &mut Cpu,
         opcode: Opcode,
         reg: RegisterCode16,
         upper: RegisterCode,
         lower: RegisterCode,
-        pointer: &mut T,
+        pointer: &mut impl FnMut(&mut Cpu) -> u16,
         mut bits_op: U,
     ) where
-        T: FnMut(&mut Cpu) -> u16,
         U: BitsOperator,
     {
         use super::Flags;
