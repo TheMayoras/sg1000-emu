@@ -113,23 +113,23 @@ impl RamBuilder {
         self
     }
 
-    pub fn mirrors(mut self, memory_maps: Vec<MemoryMap>) -> Self {
-        self.mirrors = Some(memory_maps);
+    pub fn mirrors<T: Into<MemoryMap>>(mut self, memory_maps: Vec<T>) -> Self {
+        self.mirrors = Some(memory_maps.into_iter().map(|m| m.into()).collect());
         self
     }
 
-    pub fn mirror(mut self, map: MemoryMap) -> Self {
+    pub fn mirror<T: Into<MemoryMap>>(mut self, map: T) -> Self {
         if let Some(maps) = &mut self.mirrors {
-            maps.push(map);
+            maps.push(map.into());
         } else {
-            self.mirrors = Some(vec![map]);
+            self.mirrors = Some(vec![map.into()]);
         }
 
         self
     }
 
-    pub fn map(mut self, map: MemoryMap) -> Self {
-        self.memory_map = Some(map);
+    pub fn map<T: Into<MemoryMap>>(mut self, map: T) -> Self {
+        self.memory_map = Some(map.into());
         self
     }
 
@@ -164,7 +164,7 @@ mod tests {
         let ram = Ram::builder()
             .size(100)
             .data((0..100).collect())
-            .map(MemoryMap::from(0..5))
+            .map(0..5)
             .mirror(MemoryMap::from(500..505))
             .build();
 
@@ -175,17 +175,26 @@ mod tests {
             .zip(0..100)
             .for_each(|(&fst, snd)| assert_eq!(fst, snd));
         assert_eq!(0, ram.memory_map.min);
-        assert_eq!(5, ram.memory_map.max);
+        assert_eq!(4, ram.memory_map.max);
         assert_eq!(MemoryMap::from(500..505), ram.mirrors[0]);
+
+        let ram = Ram::builder()
+            .size(100)
+            .data((0..100).collect())
+            .map(0..=5)
+            .mirror(MemoryMap::from(500..505))
+            .build();
+
+        assert_eq!(5, ram.memory_map.max);
     }
 
     #[test]
     fn test_accept() {
         let ram = Ram::builder()
-            .map(MemoryMap::from(0xFF..0xFFFE))
-            .mirror(MemoryMap::from(0x01..0xA0))
+            .map(0xFF..=0xFFFE)
+            .mirror(0x01..=0xA0)
             .build();
-        assert_eq!(MemoryMap::from(0xFF..0xFFFE), ram.memory_map);
+        assert_eq!(MemoryMap::from(0xFF..=0xFFFE), ram.memory_map);
         assert!(ram.accept(0xFF));
         assert!(ram.accept(0xFFFE));
         assert!(ram.accept(0xFFF0));
