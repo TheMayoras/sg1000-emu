@@ -6,7 +6,6 @@ use opcode::Opcode;
 use std::io::Write;
 use std::{mem, rc::Rc};
 
-mod addressing;
 mod bits;
 mod extended;
 mod opcode;
