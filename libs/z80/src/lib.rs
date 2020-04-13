@@ -3,6 +3,7 @@
 extern crate num_derive;
 extern crate bus;
 
+#[macro_use]
 pub mod cpu;
 
 #[cfg(test)]
