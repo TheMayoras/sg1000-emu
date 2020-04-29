@@ -32,7 +32,7 @@ impl BusConnectable for Vec<u8> {
     }
 
     fn cpu_read(&mut self, addr: u16) -> u8 {
-        **self.get(addr as usize).get_or_insert(&0)
+        **(self.get(addr as usize).get_or_insert(&0))
     }
 }
 
@@ -83,8 +83,8 @@ impl From<Range<u16>> for MemoryMap {
 impl From<RangeInclusive<u16>> for MemoryMap {
     fn from(range: RangeInclusive<u16>) -> Self {
         MemoryMap {
-            min: *range.start(),
-            max: *range.end(),
+            min: *range.start() as u16,
+            max: *range.end() as u16,
         }
     }
 }

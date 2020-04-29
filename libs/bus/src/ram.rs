@@ -148,7 +148,7 @@ impl RamBuilder {
         Ram {
             data,
             size,
-            memory_map: self.memory_map.unwrap_or(MemoryMap::from(0..0xFFFF)),
+            memory_map: self.memory_map.unwrap_or((0..=0xFFFF).into()),
             mirrors: self.mirrors.unwrap_or(vec![]),
             read_only: self.read_only.unwrap_or(false),
         }
